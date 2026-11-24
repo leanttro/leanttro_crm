@@ -68,8 +68,9 @@ h2{font-size:16px;font-weight:800;margin:0 0 12px;letter-spacing:-.3px;color:var
 .btn[disabled]{opacity:.5;cursor:not-allowed;transform:none;filter:none}
 .atalhos{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:22px}
 label{display:block;font-size:12px;font-weight:700;margin:10px 0 5px;color:var(--mudo)}
-input,select{width:100%;padding:12px 14px;border:1px solid var(--linha);border-radius:10px;background:#fff}
-input:focus-visible,select:focus-visible{outline:0;border-color:var(--roxo);box-shadow:0 0 0 4px #7943e226}
+input,select,textarea{width:100%;padding:12px 14px;border:1px solid var(--linha);border-radius:10px;background:#fff}
+textarea{resize:vertical}
+input:focus-visible,select:focus-visible,textarea:focus-visible{outline:0;border-color:var(--roxo);box-shadow:0 0 0 4px #7943e226}
 .form{display:grid;gap:0 12px}
 @media(min-width:600px){.form{grid-template-columns:1fr 1fr}}
 .funil{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px}
@@ -96,6 +97,9 @@ summary{cursor:pointer;display:flex;justify-content:space-between;align-items:ce
 summary::-webkit-details-marker{display:none}
 .aviso{background:#f6f2ff;border:1px solid #e3d9fa;border-left:4px solid var(--roxo);border-radius:12px;padding:12px 14px;margin-bottom:14px;word-break:break-all;color:#0f0a1f}
 .aviso code,.vazio code{background:#fff;border:1px solid var(--linha);border-radius:6px;padding:1px 6px;font-size:12px}
+.col .lead{cursor:pointer}.col .lead:hover{border-color:var(--roxo)}
+.btn.peq+.btn.peq{margin-left:0}
+@media(min-width:800px) and (max-width:1100px){.topbar{padding-left:20px;padding-right:20px}nav a{padding:9px 11px}}
 #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:28px;background:var(--escuro);color:#fff;padding:12px 18px;border-radius:12px;font-size:13px;font-weight:600;opacity:0;pointer-events:none;transition:opacity .2s;z-index:20;max-width:90vw;box-shadow:0 14px 34px -14px #000a}
 #toast.on{opacity:1}
 @media(prefers-reduced-motion:reduce){ #toast,.btn{transition:none}.btn:hover{transform:none}}
@@ -119,6 +123,8 @@ summary::-webkit-details-marker{display:none}
 <main id="view" aria-live="polite"></main>
 <div id="toast" role="status"></div>
 <dialog id="dlg-venda" aria-labelledby="dlg-tit"></dialog>
+<dialog id="dlg-lead" aria-label="Lead"></dialog>
+<dialog id="dlg-op" aria-label="Detalhes"></dialog>
 
 <script>
 const EU = {{ {'id': usuario.id, 'nome': usuario.nome, 'admin': usuario.is_admin}|tojson }};
@@ -145,7 +151,9 @@ const cent = v => {
 };
 const emReais = c => c ? (c / 100).toFixed(2).replace('.', ',') : '';
 const dataBR = iso => iso ? iso.split('-').reverse().join('/') : '—';
-let VENDAS = [];
+let VENDAS = [], RES = [], RES_TIT = '', PROJ = [], LEAD = null;
+let mesFin = new Date().toISOString().slice(0, 7);
+const PROJ_ST = {a_iniciar: 'A iniciar', andamento: 'Em andamento', entregue: 'Entregue'};
 
 async function api(metodo, url, corpo) {
   const r = await fetch(url, {method:metodo, headers:{'Content-Type':'application/json','X-CSRF':CSRF}, body: corpo ? JSON.stringify(corpo) : undefined});
@@ -198,16 +206,23 @@ const VIEWS = {
   },
 
   async prospeccao(el) {
-    const me = (await api('GET', '/api/me')).usuario;
+    const [me, h] = await Promise.all([api('GET', '/api/me'), api('GET', '/api/prospeccao')]);
+    const u = me.usuario;
     el.innerHTML = `<h1>Prospecção</h1>
       <p class="sub">Encontre empresas por segmento e cidade. Os resultados são potenciais, não contatos validados.</p>
       <section class="card">
         <div class="form">
-          <div><label for="q">Segmento ou palavra-chave</label><input id="q" placeholder="Clínicas odontológicas"></div>
-          <div><label for="cid">Cidade ou região</label><input id="cid" placeholder="São Paulo"></div></div>
-        <p style="margin:14px 0 0"><button class="btn" disabled>Buscar</button></p>
-        <p class="vazio">${me.serper ? 'Chave Serper cadastrada (' + esc(me.serper) + ').' : 'Você ainda não tem chave Serper. Cadastre em Perfil.'} A busca será ativada quando a rota <code>/api/prospeccao</code> existir no backend.</p>
+          <div><label for="q">Segmento ou palavra-chave</label><input id="q" maxlength="200" placeholder="Clínicas odontológicas"></div>
+          <div><label for="cid">Cidade ou região</label><input id="cid" maxlength="120" placeholder="São Paulo"></div></div>
+        <p style="margin:14px 0 0"><button class="btn" data-act="buscar" ${u.serper ? '' : 'disabled'}>Buscar</button></p>
+        <p class="vazio">${u.serper ? 'Chave Serper cadastrada (' + esc(u.serper) + '). Limite de 30 buscas por hora.' : 'Você ainda não tem chave Serper. <a href="#perfil">Cadastre em Perfil</a>.'}</p>
+      </section>
+      <section class="card" id="res" style="margin-top:16px" hidden></section>
+      <section class="card" style="margin-top:16px"><h2>Buscas recentes</h2>
+        ${h.buscas.map(b => `<div class="linha"><div>${esc(b.consulta)}<small>${esc(b.cidade || '—')} · ${dataBR((b.em || '').slice(0, 10))}</small></div><button class="btn peq sec" data-act="ver-busca" data-id="${b.id}">Abrir</button></div>`).join('') || vazio('Nenhuma busca ainda.')}
       </section>`;
+    RES = [];
+    el.querySelectorAll('#q,#cid').forEach(i => i.addEventListener('keydown', e => { if (e.key === 'Enter') $('[data-act="buscar"]').click(); }));
   },
 
   async vendas(el) {
@@ -217,13 +232,15 @@ const VIEWS = {
     const colunas = Object.keys(STATUS).map(s => {
       const itens = l.leads.filter(x => x.status === s);
       return `<div class="col"><h3><span>${STATUS[s]}</span><span class="chip">${itens.length}</span></h3>
-        ${itens.map(x => `<div class="lead">${esc(x.empresa)}<small>${esc(x.contato || '—')} · ${reais(x.valor_estimado_cent)}</small></div>`).join('') || vazio('Vazio')}</div>`;
+        ${itens.map(x => `<div class="lead" role="button" tabindex="0" data-act="abrir-lead" data-id="${x.id}">${esc(x.empresa)}<small>${esc(x.contato || '—')} · ${reais(x.valor_estimado_cent)}</small></div>`).join('') || vazio('Vazio')}</div>`;
     }).join('');
     const linhas = VENDAS.map(v => `<div class="linha"><div>${esc(v.cliente)}
         <small>${equipe && v.vendedor ? esc(v.vendedor) + ' · ' : ''}Setup ${reais(v.setup_cent)} · Mensal ${reais(v.mensal_cent)} · ${dataBR(v.fechada_em)}</small></div>
       <div class="acoes"><button class="btn peq sec" data-act="editar-venda" data-id="${v.id}">Editar</button>
+        ${EU.admin && v.mensal_ativa && v.mensal_cent > 0 ? `<button class="btn peq sec" data-act="cancelar-mensal" data-id="${v.id}">Cancelar mensalidade</button>` : ''}
         ${EU.admin ? `<button class="btn peq sec perigo" data-act="excluir-venda" data-id="${v.id}" data-rec="${v.recebido_cent}">Excluir</button>` : ''}</div></div>`).join('');
     el.innerHTML = `<div class="topo"><div><h1>Vendas</h1><p class="sub">Funil e comissões${equipe ? ' da equipe' : ''}.</p></div>${seletorEquipe()}</div>
+      <p style="margin:0 0 14px"><button class="btn peq" data-act="novo-lead">+ Novo lead</button></p>
       <div class="funil" aria-label="Funil comercial">${colunas}</div>
       <section class="card" style="margin-top:16px">
         <div class="topo" style="align-items:center;margin-bottom:6px"><h2 style="margin:0">Vendas fechadas</h2>
@@ -236,15 +253,38 @@ const VIEWS = {
   },
 
   async operacao(el) {
-    el.innerHTML = `<h1>Operação</h1><p class="sub">Clientes conquistados, contratos, pagamentos e entregas.</p>
-      <section class="card">${vazio('Esta página será ligada quando o backend tiver as rotas de clientes e projetos.')}</section>`;
+    const q = equipe ? '?equipe=1' : '';
+    const [c, p] = await Promise.all([api('GET', '/api/clientes' + q), api('GET', '/api/projetos' + q)]);
+    PROJ = p.projetos;
+    el.innerHTML = `<div class="topo"><div><h1>Operação</h1><p class="sub">Clientes conquistados, projetos e horas${equipe ? ' da equipe' : ''}.</p></div>${seletorEquipe()}</div>
+      <section class="card"><h2>Projetos</h2>
+        ${PROJ.map(x => `<div class="linha"><div>${esc(x.nome)}<small>${esc(x.cliente)} · prazo ${dataBR(x.prazo)} · ${x.horas} h${EU.admin ? ' · mão de obra ' + reais(x.custo_mao_obra_cent) : ''}</small></div>
+          <div class="acoes"><span class="chip ${x.status === 'entregue' ? 'ok' : x.status === 'andamento' ? 'av' : ''}">${PROJ_ST[x.status] || x.status}</span>
+          <button class="btn peq sec" data-act="abrir-proj" data-id="${x.id}">Gerenciar</button></div></div>`).join('') || vazio('Os projetos aparecem quando uma venda é fechada.')}
+      </section>
+      <section class="card" style="margin-top:16px"><div class="topo" style="align-items:center;margin-bottom:6px"><h2 style="margin:0">Clientes</h2><button class="btn peq" data-act="novo-cliente">+ Novo cliente</button></div>
+        ${c.clientes.map(x => `<div class="linha"><div>${esc(x.empresa)}<small>${esc([x.contato, x.telefone, x.email].filter(Boolean).join(' · ') || 'Sem contato')}</small></div><button class="btn peq sec" data-act="abrir-cliente" data-id="${x.id}">Abrir</button></div>`).join('') || vazio('Nenhum cliente ainda.')}
+      </section>`;
   },
 
   async financeiro(el) {
-    const [c, cfg] = await Promise.all([api('GET', '/api/comissoes?equipe=1'), api('GET', '/api/admin/config')]);
-    const k = cfg.config;
-    el.innerHTML = `<h1>Financeiro</h1><p class="sub">Comissões da equipe e regras de percentual.</p>
-      <div class="grid dois">
+    const [c, cfg, f, pg, cu] = await Promise.all([api('GET', '/api/comissoes?equipe=1'), api('GET', '/api/admin/config'),
+      api('GET', '/api/admin/financeiro?mes=' + mesFin), api('GET', '/api/admin/pagamentos?mes=' + mesFin), api('GET', '/api/admin/custos')]);
+    const k = cfg.config, hoje = new Date().toISOString().slice(0, 10);
+    const kp = (t, v) => `<div><small>${t}</small><span class="num">${reais(v)}</span></div>`;
+    const PG = {pago: 'ok', atrasado: 'er', parcial: 'av', pendente: ''};
+    el.innerHTML = `<div class="topo"><div><h1>Financeiro</h1><p class="sub">Caixa do mês, cobranças, custos e comissões.</p></div>
+        <div><label for="f-mes" style="margin-top:0">Mês</label><input id="f-mes" type="month" value="${mesFin}"></div></div>
+      <section class="card"><div class="kpis">${kp('Recebido', f.recebido_cent)}${kp('A receber', f.a_receber_cent)}${kp('Atrasado', f.atrasado_cent)}
+        ${kp('Custos', f.custos_cent)}${kp('Comissões', f.comissoes_cent)}${kp('Lucro', f.lucro_cent)}</div>
+        <p class="vazio" style="margin:12px 0 0">Receita recorrente mensal (MRR): <strong>${reais(f.mrr_cent)}</strong></p></section>
+      <section class="card" style="margin-top:16px"><h2>Cobranças do mês</h2>
+        ${pg.pagamentos.map(x => `<div class="linha"><div>${esc(x.cliente)} · ${x.tipo === 'setup' ? 'Setup' : 'Mensalidade ' + esc(x.competencia)}
+          <small>${esc(x.vendedor)} · vence ${dataBR(x.vence_em)} · ${reais(x.recebido_cent)} de ${reais(x.valor_cent)}</small></div>
+          <div class="acoes"><span class="chip ${PG[x.status] ?? ''}">${x.status}</span>
+          ${x.status !== 'pago' ? `<button class="btn peq" data-act="receber" data-id="${x.id}" data-total="${x.valor_cent}">Registrar recebimento</button>` : ''}</div></div>`).join('') || vazio('Nenhuma cobrança com vencimento neste mês.')}
+      </section>
+      <div class="grid dois" style="margin-top:16px">
       <section class="card"><h2>Percentual padrão</h2>
         <p class="vazio" style="margin-top:-6px">Vale para quem não tem percentual próprio. Vendas antigas não mudam.</p>
         <div class="form">
@@ -252,10 +292,23 @@ const VIEWS = {
           <div><label for="p-mensal">Mensalidade (%)</label><input id="p-mensal" inputmode="decimal" value="${k.comissao_mensal_pct}"></div></div>
         <p style="margin:14px 0 0"><button class="btn" data-act="salvar-cfg">Salvar percentuais</button></p></section>
       <section class="card"><h2>Comissões da equipe</h2>${totaisCom(c.totais)}</section></div>
-      <section class="card" style="margin-top:14px"><h2>Repasses</h2>
+      <section class="card" style="margin-top:16px"><h2>Custos</h2>
+        <div class="form">
+          <div><label for="c-tipo">Tipo</label><select id="c-tipo"><option value="fixo">Fixo</option><option value="variavel">Variável</option></select></div>
+          <div><label for="c-cat">Categoria *</label><input id="c-cat" maxlength="60" placeholder="Hospedagem, ferramentas…"></div>
+          <div><label for="c-desc">Descrição</label><input id="c-desc" maxlength="200"></div>
+          <div><label for="c-val">Valor (R$)</label><input id="c-val" inputmode="decimal" placeholder="0,00"></div>
+          <div><label for="c-rec">Recorrência</label><select id="c-rec"><option value="mensal">Mensal</option><option value="anual">Anual</option><option value="unica">Única</option></select></div>
+          <div><label for="c-data">Data</label><input id="c-data" type="date" value="${hoje}"></div></div>
+        <p style="margin:14px 0 6px"><button class="btn" data-act="add-custo">Adicionar custo</button></p>
+        ${cu.custos.map(x => `<div class="linha"><div>${esc(x.categoria)}${x.descricao ? ' · ' + esc(x.descricao) : ''}<small>${x.tipo} · ${x.recorrencia} · ${dataBR(x.data)} · ${reais(x.valor_cent)}</small></div>
+          <button class="btn peq sec perigo" data-act="del-custo" data-id="${x.id}">Excluir</button></div>`).join('') || vazio('Nenhum custo cadastrado.')}
+      </section>
+      <section class="card" style="margin-top:16px"><h2>Repasses</h2>
         ${c.comissoes.map(x => `<div class="linha"><div>Venda #${x.venda_id} · vendedor #${x.vendedor_id}<small>${x.pct}% · liberado ${reais(x.liberado_cent)} · pago ${reais(x.pago_cent)}</small></div>
           <div>${chipCom(x.status)} ${x.a_pagar_cent > 0 ? `<button class="btn peq" data-act="pagar" data-id="${x.id}">Pagar ${reais(x.a_pagar_cent)}</button>` : ''}</div></div>`).join('') || vazio('Nenhuma comissão ainda.')}
       </section>`;
+    $('#f-mes').addEventListener('change', e => { if (/^\d{4}-\d{2}$/.test(e.target.value)) { mesFin = e.target.value; rota(); } });
   },
 
   async perfil(el) {
@@ -338,10 +391,218 @@ async function abrirVenda(venda) {
   dlg.showModal();
 }
 
+/* ---------- helpers de diálogo ---------- */
+const emDlg = fn => async b => {
+  try { await fn(b); }
+  catch (err) { const x = b.closest('dialog')?.querySelector('.dlg-erro'); if (!x) throw err; x.textContent = err.message; x.hidden = false; }
+};
+const erroBox = msg => `<div class="aviso dlg-erro" role="alert" ${msg ? '' : 'hidden'}>${esc(msg || '')}</div>`;
+const campo = (id, rot, v, extra = '') => `<div><label for="${id}">${rot}</label><input id="${id}" value="${esc(v ?? '')}" ${extra}></div>`;
+const opcoesSrv = (sv, sel) => `<option value="">— sem serviço —</option>${sv.map(x => `<option value="${x.id}" ${x.id === sel ? 'selected' : ''}>${esc(x.nome)}</option>`).join('')}`;
+function ligarServico(sv, selId, setupId, mensalId) {
+  $(selId).addEventListener('change', e => {
+    const s = sv.find(x => x.id === Number(e.target.value)); if (!s) return;
+    $(setupId).value = emReais(s.setup_cent); $(mensalId).value = emReais(s.mensal_cent);
+  });
+}
+
+/* ---------- lead ---------- */
+async function abrirLead(id, msg) {
+  const novo = !id;
+  const [d, sv] = novo ? [{lead: {status: 'novo'}, historico: [], propostas: []}, {servicos: []}]
+    : await Promise.all([api('GET', '/api/leads/' + id), api('GET', '/api/servicos')]);
+  const l = LEAD = d.lead, fech = l.status === 'fechado', dlg = $('#dlg-lead');
+  dlg.dataset.id = id || '';
+  const secoes = novo ? '' : `
+    <details><summary>Mensagem com IA</summary>
+      <div class="form"><div><label for="ia-canal">Canal</label><select id="ia-canal"><option value="whatsapp">WhatsApp</option><option value="email">E-mail</option></select></div></div>
+      <p style="margin:12px 0"><button class="btn peq sec" data-act="ia-msg">Gerar mensagem</button></p>
+      <textarea id="ia-txt" rows="6" hidden></textarea></details>
+    <details><summary>Registrar nota ou contato</summary>
+      <div class="form"><div><label for="n-tipo">Tipo</label><select id="n-tipo"><option value="nota">Nota</option><option value="contato">Contato feito</option></select></div>
+      <div class="full"><label for="n-txt">Texto</label><textarea id="n-txt" rows="3" maxlength="2000"></textarea></div></div>
+      <p style="margin:12px 0 0"><button class="btn peq" data-act="nota">Salvar</button></p></details>
+    <details><summary>Propostas (${d.propostas.length})</summary>
+      ${d.propostas.map(p => `<div class="linha"><div>Proposta #${p.id}<small>Setup ${reais(p.setup_cent)} · Mensal ${reais(p.mensal_cent)}</small></div>
+        <div class="acoes"><span class="chip ${p.status === 'aceita' ? 'ok' : p.status === 'recusada' ? 'er' : ''}">${esc(p.status)}</span>
+        ${p.tem_pdf ? `<a class="btn peq sec" href="/api/propostas/${p.id}/pdf" target="_blank" rel="noopener">PDF</a>` : ''}
+        ${['aceita', 'recusada'].includes(p.status) ? '' : `<button class="btn peq sec" data-act="prop-status" data-id="${p.id}" data-st="enviada">Enviada</button><button class="btn peq sec perigo" data-act="prop-status" data-id="${p.id}" data-st="recusada">Recusada</button>`}</div></div>`).join('')}
+      <div class="form">
+        <div class="full"><label for="p-srv">Serviço</label><select id="p-srv">${opcoesSrv(sv.servicos, l.servico_id)}</select></div>
+        <div><label for="p-setup">Setup (R$)</label><input id="p-setup" inputmode="decimal" placeholder="0,00"></div>
+        <div><label for="p-mensal">Mensalidade (R$)</label><input id="p-mensal" inputmode="decimal" placeholder="0,00"></div>
+        <div><label for="p-val">Validade</label><input id="p-val" type="date"></div>
+        <div class="full"><label for="p-cond">Condições</label><textarea id="p-cond" rows="2" maxlength="3000"></textarea></div></div>
+      <p style="margin:12px 0 0"><button class="btn peq" data-act="proposta">Gerar proposta (PDF)</button></p></details>
+    ${fech ? '' : `<details><summary>Fechar venda</summary>
+      <div class="form">
+        <div class="full"><label for="f-srv">Serviço</label><select id="f-srv">${opcoesSrv(sv.servicos, l.servico_id)}</select></div>
+        <div><label for="f-setup">Setup (R$)</label><input id="f-setup" inputmode="decimal" placeholder="0,00"></div>
+        <div><label for="f-mensal">Mensalidade (R$)</label><input id="f-mensal" inputmode="decimal" placeholder="0,00"></div></div>
+      <p style="margin:12px 0 0"><button class="btn peq" data-act="fechar-lead">Fechar venda</button></p></details>`}
+    <h2 style="margin-top:18px">Histórico</h2>
+    ${d.historico.map(h => `<div class="linha"><div>${esc(h.texto || h.tipo)}<small>${h.tipo === 'status' ? esc((STATUS[h.de] || '—') + ' → ' + (STATUS[h.para] || '—')) + ' · ' : ''}${dataBR((h.em || '').slice(0, 10))}</small></div></div>`).join('') || vazio('Sem histórico.')}`;
+  dlg.innerHTML = `<div class="dlg"><div class="topo"><h2>${novo ? 'Novo lead' : esc(l.empresa)}</h2>${novo ? '' : chipLead(l.status)}</div>
+    <p class="vazio" style="margin:0">${novo ? 'Cadastro manual de um lead.' : esc([l.segmento, l.cidade].filter(Boolean).join(' · ') || 'Lead')}</p>
+    <div class="form">${campo('l-empresa', 'Empresa *', l.empresa, 'maxlength="160"')}${campo('l-contato', 'Contato', l.contato, 'maxlength="120"')}
+      ${campo('l-telefone', 'Telefone', l.telefone, 'inputmode="tel"')}${campo('l-whatsapp', 'WhatsApp', l.whatsapp, 'inputmode="tel"')}
+      ${campo('l-email', 'E-mail', l.email, 'type="email"')}${campo('l-site', 'Site', l.site)}
+      <div><label for="l-valor">Valor estimado (R$)</label><input id="l-valor" inputmode="decimal" value="${emReais(l.valor_estimado_cent)}"></div>
+      ${novo ? '' : `<div><label for="l-status">Etapa</label><select id="l-status" ${fech ? 'disabled' : ''}>${Object.entries(STATUS).filter(([s]) => s !== 'fechado' || fech).map(([s, n]) => `<option value="${s}" ${s === l.status ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
+      <div class="full" id="l-motivo-box" hidden><label for="l-motivo">Motivo da perda *</label><input id="l-motivo" maxlength="200" value="${esc(l.motivo_perda || '')}"></div>`}</div>
+    ${erroBox(msg)}
+    <div class="rod"><button class="btn sec" data-act="fechar-dlg">Fechar</button><button class="btn" data-act="salvar-lead">${novo ? 'Criar lead' : 'Salvar alterações'}</button></div>
+    ${secoes}</div>`;
+  const st = $('#l-status', dlg);
+  if (st) { const t = () => $('#l-motivo-box', dlg).hidden = st.value !== 'perdido'; st.addEventListener('change', t); t(); }
+  if (!novo) { ligarServico(sv.servicos, '#p-srv', '#p-setup', '#p-mensal'); if (!fech) ligarServico(sv.servicos, '#f-srv', '#f-setup', '#f-mensal'); }
+  if (!dlg.open) dlg.showModal();
+}
+const reabrirLead = async msg => { await rota(); return abrirLead(Number($('#dlg-lead').dataset.id), msg); };
+
+/* ---------- projeto e cliente ---------- */
+function abrirProjeto(id, msg) {
+  const p = PROJ.find(x => x.id === id), dlg = $('#dlg-op'); if (!p) return;
+  dlg.dataset.id = id; dlg.dataset.tipo = 'proj';
+  dlg.innerHTML = `<div class="dlg"><h2>${esc(p.nome)}</h2><p class="vazio" style="margin:0">${esc(p.cliente)} · ${p.horas} h registradas</p>
+    <div class="form">${campo('pj-nome', 'Nome', p.nome, 'maxlength="160"')}
+      <div><label for="pj-st">Status</label><select id="pj-st">${Object.entries(PROJ_ST).map(([k, n]) => `<option value="${k}" ${k === p.status ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
+      <div><label for="pj-prazo">Prazo</label><input id="pj-prazo" type="date" value="${p.prazo || ''}"></div>
+      <div><label for="pj-custo">Custo por hora (R$)</label><input id="pj-custo" inputmode="decimal" value="${emReais(p.custo_hora_cent)}"></div>
+      <div class="full"><label for="pj-obs">Observações</label><textarea id="pj-obs" rows="3" maxlength="4000">${esc(p.observacoes || '')}</textarea></div></div>
+    <p style="margin:12px 0 0"><button class="btn peq" data-act="salvar-proj">Salvar projeto</button></p>
+    <h2 style="margin-top:18px">Lançar horas</h2>
+    <div class="form"><div><label for="h-h">Horas</label><input id="h-h" inputmode="decimal" placeholder="1,5"></div>
+      <div><label for="h-data">Data</label><input id="h-data" type="date" value="${new Date().toISOString().slice(0, 10)}"></div>
+      <div class="full"><label for="h-desc">Descrição</label><input id="h-desc" maxlength="200"></div></div>
+    <p style="margin:12px 0 0"><button class="btn peq" data-act="horas">Lançar horas</button></p>
+    ${erroBox(msg)}<div class="rod"><button class="btn sec" data-act="fechar-dlg">Fechar</button></div></div>`;
+  if (!dlg.open) dlg.showModal();
+}
+async function abrirCliente(id, msg) {
+  const novo = !id, d = novo ? {cliente: {}, projetos: [], vendas: []} : await api('GET', '/api/clientes/' + id);
+  const c = d.cliente, dlg = $('#dlg-op'); dlg.dataset.id = id || ''; dlg.dataset.tipo = 'cli';
+  dlg.innerHTML = `<div class="dlg"><h2>${novo ? 'Novo cliente' : esc(c.empresa)}</h2>
+    <div class="form">${campo('c-emp', 'Empresa *', c.empresa, 'maxlength="160"')}${campo('c-con', 'Contato', c.contato, 'maxlength="120"')}
+      ${campo('c-doc', 'CPF/CNPJ', c.documento, 'maxlength="20"')}${campo('c-tel', 'Telefone', c.telefone, 'inputmode="tel"')}
+      ${campo('c-mail', 'E-mail', c.email, 'type="email"')}${campo('c-site', 'Site', c.site)}
+      <div class="full">${campo('c-end', 'Endereço', c.endereco)}</div>
+      <div class="full"><label for="c-obs">Observações</label><textarea id="c-obs" rows="3" maxlength="4000">${esc(c.observacoes || '')}</textarea></div></div>
+    ${novo ? '' : `<h2 style="margin-top:18px">Projetos</h2>${d.projetos.map(p => `<div class="linha"><div>${esc(p.nome)}<small>prazo ${dataBR(p.prazo)} · ${p.horas} h</small></div><span class="chip">${PROJ_ST[p.status] || p.status}</span></div>`).join('') || vazio('Sem projetos.')}
+      <h2 style="margin-top:18px">Vendas</h2>${d.vendas.map(v => `<div class="linha"><div>Venda #${v.id}<small>Setup ${reais(v.setup_cent)} · Mensal ${reais(v.mensal_cent)} · ${dataBR(v.fechada_em)}</small></div><span class="chip ${v.mensal_ativa ? 'ok' : ''}">${v.mensal_ativa ? 'Mensal ativa' : 'Sem mensal'}</span></div>`).join('') || vazio('Sem vendas.')}`}
+    ${erroBox(msg)}<div class="rod"><button class="btn sec" data-act="fechar-dlg">Fechar</button><button class="btn" data-act="salvar-cliente">${novo ? 'Criar cliente' : 'Salvar'}</button></div></div>`;
+  if (!dlg.open) dlg.showModal();
+}
+const setRes = (id, st) => { const r = RES.find(x => x.id === id); if (r) r.status = st; desenharRes(); };
+function desenharRes(rolar) {
+  const el = $('#res'); if (!el) return; el.hidden = false;
+  el.innerHTML = `<h2>${esc(RES_TIT)} · ${RES.length} resultado${RES.length === 1 ? '' : 's'}</h2>` + (RES.map(r => `<div class="linha"><div>${esc(r.titulo)}<small>${esc([r.telefone, r.site, r.endereco].filter(Boolean).join(' · ') || 'Sem dados de contato')}</small></div>
+    <div class="acoes">${r.status === 'novo' ? `<button class="btn peq" data-act="importar" data-id="${r.id}">Virar lead</button><button class="btn peq sec" data-act="descartar" data-id="${r.id}">Descartar</button>`
+      : `<span class="chip ${r.status === 'importado' ? 'ok' : 'er'}">${r.status === 'importado' ? 'Lead criado' : 'Descartado'}</span>`}</div></div>`).join('') || vazio('Nada encontrado.'));
+  if (rolar) el.scrollIntoView({behavior: 'smooth', block: 'start'});
+}
+
 const ACOES = {
+  /* prospecção */
+  async buscar(b) {
+    const consulta = $('#q').value.trim(), cidade = $('#cid').value.trim();
+    if (!consulta) return aviso('Informe o segmento ou palavra-chave.');
+    b.textContent = 'Buscando…';
+    try { const d = await api('POST', '/api/prospeccao', {consulta, cidade}); RES = d.resultados; RES_TIT = consulta + (cidade ? ' em ' + cidade : ''); desenharRes(true); }
+    finally { b.textContent = 'Buscar'; }
+  },
+  async 'ver-busca'(b) { const d = await api('GET', '/api/prospeccao/' + b.dataset.id); RES = d.resultados; RES_TIT = d.busca.consulta + (d.busca.cidade ? ' em ' + d.busca.cidade : ''); desenharRes(true); },
+  async importar(b) {
+    const id = Number(b.dataset.id);
+    try { await api('POST', `/api/prospeccao/resultados/${id}/importar`); setRes(id, 'importado'); aviso('Lead criado. Ele já está no funil em Vendas.'); }
+    catch (err) { if (/Já existe/.test(err.message)) setRes(id, 'descartado'); throw err; }
+  },
+  async descartar(b) { const id = Number(b.dataset.id); await api('POST', `/api/prospeccao/resultados/${id}/descartar`); setRes(id, 'descartado'); },
+
+  /* leads */
+  'abrir-lead': b => abrirLead(Number(b.dataset.id)),
+  'novo-lead': () => abrirLead(null),
+  'salvar-lead': emDlg(async () => {
+    const dlg = $('#dlg-lead'), id = dlg.dataset.id, d = {};
+    for (const c of ['empresa', 'contato', 'telefone', 'whatsapp', 'email', 'site']) d[c] = $('#l-' + c).value.trim();
+    d.valor_estimado_cent = cent($('#l-valor').value);
+    if (!id) { d.origem = 'manual'; await api('POST', '/api/leads', d); dlg.close(); aviso('Lead criado.'); return rota(); }
+    d.versao = LEAD.versao;
+    const st = $('#l-status').value;
+    if (st !== LEAD.status) { d.status = st; if (st === 'perdido') d.motivo_perda = $('#l-motivo').value; }
+    await api('PUT', '/api/leads/' + id, d);
+    return reabrirLead('Lead salvo.');
+  }),
+  'ia-msg': emDlg(async () => {
+    const d = await api('POST', '/api/ia/mensagem', {lead_id: LEAD.id, canal: $('#ia-canal').value});
+    const t = $('#ia-txt'); t.value = d.texto; t.hidden = false; t.select();
+  }),
+  nota: emDlg(async () => {
+    await api('POST', `/api/leads/${LEAD.id}/nota`, {texto: $('#n-txt').value, tipo: $('#n-tipo').value});
+    return reabrirLead('Nota salva.');
+  }),
+  proposta: emDlg(async () => {
+    const sid = $('#p-srv').value;
+    await api('POST', '/api/propostas', {lead_id: LEAD.id, servico_id: sid ? Number(sid) : null, setup_cent: cent($('#p-setup').value),
+      mensal_cent: cent($('#p-mensal').value), validade: $('#p-val').value || null, condicoes: $('#p-cond').value});
+    return reabrirLead('Proposta gerada.');
+  }),
+  'prop-status': emDlg(async b => { await api('PUT', '/api/propostas/' + b.dataset.id, {status: b.dataset.st}); return reabrirLead('Proposta atualizada.'); }),
+  'fechar-lead': emDlg(async () => {
+    const sid = $('#f-srv').value, d = {setup_cent: cent($('#f-setup').value), mensal_cent: cent($('#f-mensal').value)};
+    if (sid) d.servico_id = Number(sid);
+    if (d.setup_cent + d.mensal_cent <= 0) throw new Error('Informe o valor do setup e/ou da mensalidade.');
+    if (!confirm('Fechar a venda deste lead?')) return;
+    await api('POST', `/api/leads/${LEAD.id}/fechar`, d);
+    $('#dlg-lead').close(); aviso('Venda fechada. Projeto e comissões foram gerados.'); return rota();
+  }),
+  async 'cancelar-mensal'(b) {
+    if (!confirm('Parar de gerar mensalidades desta venda? As futuras sem recebimento serão removidas.')) return;
+    const r = await api('POST', `/api/admin/vendas/${b.dataset.id}/cancelar-mensal`, {});
+    aviso(r.mensalidades_removidas + ' mensalidade(s) futura(s) removida(s).'); return rota();
+  },
+
+  /* operação */
+  'abrir-proj': b => abrirProjeto(Number(b.dataset.id)),
+  'salvar-proj': emDlg(async () => {
+    const id = Number($('#dlg-op').dataset.id);
+    await api('PUT', '/api/projetos/' + id, {nome: $('#pj-nome').value, status: $('#pj-st').value, prazo: $('#pj-prazo').value || null,
+      custo_hora_cent: cent($('#pj-custo').value), observacoes: $('#pj-obs').value});
+    await rota(); return abrirProjeto(id, 'Projeto salvo.');
+  }),
+  horas: emDlg(async () => {
+    const id = Number($('#dlg-op').dataset.id), h = num($('#h-h').value);
+    if (!h || h <= 0 || h > 24) throw new Error('Horas deve ser um número entre 0 e 24.');
+    await api('POST', `/api/projetos/${id}/horas`, {horas: h, data: $('#h-data').value || null, descricao: $('#h-desc').value});
+    await rota(); return abrirProjeto(id, 'Horas lançadas.');
+  }),
+  'novo-cliente': () => abrirCliente(null),
+  'abrir-cliente': b => abrirCliente(Number(b.dataset.id)),
+  'salvar-cliente': emDlg(async () => {
+    const dlg = $('#dlg-op'), id = dlg.dataset.id;
+    const d = {empresa: $('#c-emp').value, contato: $('#c-con').value, documento: $('#c-doc').value, telefone: $('#c-tel').value,
+      email: $('#c-mail').value, site: $('#c-site').value, endereco: $('#c-end').value, observacoes: $('#c-obs').value};
+    if (id) await api('PUT', '/api/clientes/' + id, d); else await api('POST', '/api/clientes', d);
+    dlg.close(); aviso(id ? 'Cliente salvo.' : 'Cliente criado.'); return rota();
+  }),
+
+  /* financeiro */
+  async receber(b) {
+    const total = Number(b.dataset.total), r = prompt('Total recebido deste pagamento (R$). Previsto: ' + reais(total), emReais(total));
+    if (r === null) return;
+    await api('POST', `/api/admin/pagamentos/${b.dataset.id}/receber`, {valor_recebido_cent: cent(r)});
+    aviso('Recebimento registrado.'); return rota();
+  },
+  async 'add-custo'() {
+    await api('POST', '/api/admin/custos', {tipo: $('#c-tipo').value, categoria: $('#c-cat').value, descricao: $('#c-desc').value,
+      valor_cent: cent($('#c-val').value), recorrencia: $('#c-rec').value, data: $('#c-data').value || null});
+    aviso('Custo adicionado.'); return rota();
+  },
+  async 'del-custo'(b) { if (!confirm('Excluir este custo?')) return; await api('DELETE', '/api/admin/custos/' + b.dataset.id); aviso('Custo excluído.'); return rota(); },
+
   'nova-venda': () => abrirVenda(null),
   'editar-venda': b => abrirVenda(VENDAS.find(x => x.id === Number(b.dataset.id))),
-  'fechar-dlg': () => $('#dlg-venda').close(),
+  'fechar-dlg': b => b.closest('dialog').close(),
   async 'salvar-venda'() {
     const dlg = $('#dlg-venda'), id = dlg.dataset.id, erro = $('#v-erro', dlg);
     erro.hidden = true;
@@ -448,7 +709,10 @@ function menuAberto(a) {
 }
 burger.addEventListener('click', () => menuAberto(!menuEl.classList.contains('aberto')));
 menuEl.addEventListener('click', e => { if (e.target.closest('a')) menuAberto(false); });
-addEventListener('keydown', e => { if (e.key === 'Escape') menuAberto(false); });
+addEventListener('keydown', e => {
+  if (e.key === 'Escape') menuAberto(false);
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches?.('.lead[data-act]')) { e.preventDefault(); e.target.click(); }
+});
 addEventListener('hashchange', () => { rota(); window.scrollTo(0, 0); });
 rota();
 </script>
