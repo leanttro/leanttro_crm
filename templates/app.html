@@ -72,11 +72,21 @@ input,select{width:100%;padding:12px 14px;border:1px solid var(--linha);border-r
 input:focus-visible,select:focus-visible{outline:0;border-color:var(--roxo);box-shadow:0 0 0 4px #7943e226}
 .form{display:grid;gap:0 12px}
 @media(min-width:600px){.form{grid-template-columns:1fr 1fr}}
-.funil{display:flex;gap:14px;overflow-x:auto;padding-bottom:10px;scroll-snap-type:x proximity}
-.col{flex:0 0 250px;scroll-snap-align:start;background:#fff;border:1px solid var(--linha);border-radius:var(--r);padding:14px;box-shadow:var(--sombra)}
+.funil{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px}
+.col{min-width:0;background:#fff;border:1px solid var(--linha);border-radius:var(--r);padding:14px;box-shadow:var(--sombra)}
 .col h3{font-size:13px;font-weight:800;letter-spacing:-.2px;margin:0 0 10px;display:flex;justify-content:space-between;align-items:center}
 .col .lead{padding:10px 12px;border-radius:10px;background:var(--lavanda);border:1px solid #e3d9fa;margin-bottom:6px;font-size:13px;font-weight:700}
 .col .lead small{display:block;color:var(--mudo);font-weight:500;font-size:12px}
+.full{grid-column:1/-1}
+.acoes{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.btn.perigo{color:var(--erro);border-color:var(--erro)}
+.btn.perigo:hover{background:#fdecea}
+dialog{border:0;border-radius:16px;padding:0;width:min(580px,94vw);max-height:92vh;overflow:auto;box-shadow:0 30px 80px -20px #000a;color:inherit;background:#fff}
+dialog::backdrop{background:#120b2488}
+.dlg{padding:22px}
+.dlg h2{font-size:20px;margin-bottom:4px}
+.dlg .rod{display:flex;gap:10px;justify-content:flex-end;margin-top:18px;flex-wrap:wrap}
+.dlg .aviso{margin:12px 0 0;word-break:normal}
 .topo{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
 .seg{display:inline-flex;border:1px solid var(--linha);border-radius:10px;overflow:hidden;background:#fff}
 .seg button{border:0;background:none;padding:9px 16px;cursor:pointer;font-weight:800;color:var(--mudo)}
@@ -108,6 +118,7 @@ summary::-webkit-details-marker{display:none}
 </header>
 <main id="view" aria-live="polite"></main>
 <div id="toast" role="status"></div>
+<dialog id="dlg-venda" aria-labelledby="dlg-tit"></dialog>
 
 <script>
 const EU = {{ {'id': usuario.id, 'nome': usuario.nome, 'admin': usuario.is_admin}|tojson }};
@@ -123,6 +134,18 @@ const $ = (s, r = document) => r.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const reais = c => ((c || 0) / 100).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
 const num = v => (v === '' || v == null) ? null : Number(String(v).replace(',', '.'));
+const cent = v => {
+  let t = String(v ?? '').replace(/[R$\s]/g, '');
+  if (!t) return 0;
+  if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
+  else if (/\.\d{3}(\.|$)/.test(t)) t = t.replace(/\./g, '');
+  const n = Number(t);
+  if (!isFinite(n) || n < 0) throw new Error('Valor inválido.');
+  return Math.round(n * 100);
+};
+const emReais = c => c ? (c / 100).toFixed(2).replace('.', ',') : '';
+const dataBR = iso => iso ? iso.split('-').reverse().join('/') : '—';
+let VENDAS = [];
 
 async function api(metodo, url, corpo) {
   const r = await fetch(url, {method:metodo, headers:{'Content-Type':'application/json','X-CSRF':CSRF}, body: corpo ? JSON.stringify(corpo) : undefined});
@@ -188,14 +211,25 @@ const VIEWS = {
   },
 
   async vendas(el) {
-    const [l, c] = await Promise.all([api('GET', '/api/leads' + (equipe ? '?equipe=1' : '')), api('GET', '/api/comissoes' + (equipe ? '?equipe=1' : ''))]);
+    const q = equipe ? '?equipe=1' : '';
+    const [l, c, vd] = await Promise.all([api('GET', '/api/leads' + q), api('GET', '/api/comissoes' + q), api('GET', '/api/vendas' + q)]);
+    VENDAS = vd.vendas;
     const colunas = Object.keys(STATUS).map(s => {
       const itens = l.leads.filter(x => x.status === s);
       return `<div class="col"><h3><span>${STATUS[s]}</span><span class="chip">${itens.length}</span></h3>
         ${itens.map(x => `<div class="lead">${esc(x.empresa)}<small>${esc(x.contato || '—')} · ${reais(x.valor_estimado_cent)}</small></div>`).join('') || vazio('Vazio')}</div>`;
     }).join('');
+    const linhas = VENDAS.map(v => `<div class="linha"><div>${esc(v.cliente)}
+        <small>${equipe && v.vendedor ? esc(v.vendedor) + ' · ' : ''}Setup ${reais(v.setup_cent)} · Mensal ${reais(v.mensal_cent)} · ${dataBR(v.fechada_em)}</small></div>
+      <div class="acoes"><button class="btn peq sec" data-act="editar-venda" data-id="${v.id}">Editar</button>
+        ${EU.admin ? `<button class="btn peq sec perigo" data-act="excluir-venda" data-id="${v.id}" data-rec="${v.recebido_cent}">Excluir</button>` : ''}</div></div>`).join('');
     el.innerHTML = `<div class="topo"><div><h1>Vendas</h1><p class="sub">Funil e comissões${equipe ? ' da equipe' : ''}.</p></div>${seletorEquipe()}</div>
-      <div class="funil" tabindex="0" aria-label="Funil comercial">${colunas}</div>
+      <div class="funil" aria-label="Funil comercial">${colunas}</div>
+      <section class="card" style="margin-top:16px">
+        <div class="topo" style="align-items:center;margin-bottom:6px"><h2 style="margin:0">Vendas fechadas</h2>
+          <button class="btn peq" data-act="nova-venda">+ Nova venda</button></div>
+        ${linhas || vazio('Nenhuma venda ainda. Use “Nova venda” para cadastrar uma manualmente.')}
+      </section>
       <section class="card" style="margin-top:16px"><h2>Comissões</h2>${totaisCom(c.totais)}
         ${c.comissoes.slice(0, 20).map(x => `<div class="linha"><div>Venda #${x.venda_id}<small>${x.pct}% · previsto ${reais(x.previsto_cent)} · liberado ${reais(x.liberado_cent)}</small></div>${chipCom(x.status)}</div>`).join('')}
       </section>`;
@@ -262,7 +296,85 @@ const VIEWS = {
 };
 
 /* ---------- ações ---------- */
+/* ---------- venda: cadastrar / editar ---------- */
+async function abrirVenda(venda) {
+  const ed = !!venda;
+  const [cl, sv, us] = await Promise.all([
+    ed ? null : api('GET', '/api/clientes' + (EU.admin ? '?equipe=1' : '')),
+    api('GET', '/api/servicos'),
+    EU.admin && !ed ? api('GET', '/api/admin/usuarios') : null]);
+  const v = venda || {};
+  const cliente = ed
+    ? `<div class="full"><label>Cliente</label><input value="${esc(v.cliente)}" disabled></div>`
+    : `<div class="full"><label for="v-cli">Cliente</label><select id="v-cli"><option value="">+ Novo cliente</option>${cl.clientes.map(x => `<option value="${x.id}">${esc(x.empresa)}</option>`).join('')}</select></div>
+       <div class="novo"><label for="v-emp">Empresa *</label><input id="v-emp" maxlength="160"></div>
+       <div class="novo"><label for="v-con">Contato</label><input id="v-con" maxlength="120"></div>
+       <div class="novo"><label for="v-tel">Telefone</label><input id="v-tel" maxlength="40" inputmode="tel"></div>
+       <div class="novo"><label for="v-mail">E-mail</label><input id="v-mail" type="email" maxlength="254"></div>`;
+  const vendedor = EU.admin && !ed
+    ? `<div class="full"><label for="v-vend">Vendedor</label><select id="v-vend">${us.usuarios.filter(u => u.status === 'ativo').map(u => `<option value="${u.id}" ${u.id === EU.id ? 'selected' : ''}>${esc(u.nome)}</option>`).join('')}</select></div>` : '';
+  const pcts = EU.admin
+    ? `<div><label for="v-ps">Comissão setup (%)</label><input id="v-ps" inputmode="decimal" placeholder="padrão" value="${ed ? v.pct_setup : ''}"></div>
+       <div><label for="v-pm">Comissão mensal (%)</label><input id="v-pm" inputmode="decimal" placeholder="padrão" value="${ed ? v.pct_mensal : ''}"></div>` : '';
+  const dlg = $('#dlg-venda');
+  dlg.dataset.id = ed ? v.id : '';
+  dlg.innerHTML = `<div class="dlg"><h2 id="dlg-tit">${ed ? 'Editar venda' : 'Nova venda'}</h2>
+    <p class="vazio" style="margin:0">${ed ? 'Parcelas que já receberam pagamento não podem ficar abaixo do valor recebido.' : 'Cadastro manual de uma venda já fechada.'}</p>
+    <div class="form">${cliente}${vendedor}
+      <div class="full"><label for="v-srv">Serviço</label><select id="v-srv"><option value="">— sem serviço —</option>${sv.servicos.map(x => `<option value="${x.id}" ${x.id === v.servico_id ? 'selected' : ''}>${esc(x.nome)}</option>`).join('')}</select></div>
+      <div><label for="v-setup">Setup (R$)</label><input id="v-setup" inputmode="decimal" placeholder="0,00" value="${emReais(v.setup_cent)}"></div>
+      <div><label for="v-svence">Vencimento do setup</label><input id="v-svence" type="date" value="${v.setup_vence || ''}"></div>
+      <div><label for="v-mensal">Mensalidade (R$)</label><input id="v-mensal" inputmode="decimal" placeholder="0,00" value="${emReais(v.mensal_cent)}"></div>
+      <div><label for="v-minicio">1ª mensalidade em</label><input id="v-minicio" type="date" value="${v.mensal_inicio || ''}"></div>
+      <div><label for="v-data">Data da venda</label><input id="v-data" type="date" value="${v.fechada_em || ''}"></div>
+      ${pcts}</div>
+    <div id="v-erro" class="aviso" role="alert" hidden></div>
+    <div class="rod"><button class="btn sec" data-act="fechar-dlg">Cancelar</button><button class="btn" data-act="salvar-venda">${ed ? 'Salvar alterações' : 'Cadastrar venda'}</button></div></div>`;
+  const sel = $('#v-cli', dlg);
+  if (sel) {
+    const alterna = () => dlg.querySelectorAll('.novo').forEach(n => n.hidden = !!sel.value);
+    sel.addEventListener('change', alterna); alterna();
+  }
+  dlg.showModal();
+}
+
 const ACOES = {
+  'nova-venda': () => abrirVenda(null),
+  'editar-venda': b => abrirVenda(VENDAS.find(x => x.id === Number(b.dataset.id))),
+  'fechar-dlg': () => $('#dlg-venda').close(),
+  async 'salvar-venda'() {
+    const dlg = $('#dlg-venda'), id = dlg.dataset.id, erro = $('#v-erro', dlg);
+    erro.hidden = true;
+    try {
+      const d = {servico_id: $('#v-srv').value ? Number($('#v-srv').value) : null,
+        setup_cent: cent($('#v-setup').value), mensal_cent: cent($('#v-mensal').value),
+        setup_vence: $('#v-svence').value || null, mensal_inicio: $('#v-minicio').value || null,
+        fechada_em: $('#v-data').value || null};
+      if (d.setup_cent + d.mensal_cent <= 0) throw new Error('Informe o valor do setup e/ou da mensalidade.');
+      if (EU.admin) { d.pct_setup = num($('#v-ps').value); d.pct_mensal = num($('#v-pm').value); }
+      if (id) await api('PUT', '/api/vendas/' + id, d);
+      else {
+        const cli = $('#v-cli').value;
+        if (cli) d.cliente_id = Number(cli);
+        else {
+          if (!$('#v-emp').value.trim()) throw new Error('Informe o nome da empresa do cliente.');
+          d.cliente_novo = {empresa: $('#v-emp').value, contato: $('#v-con').value, telefone: $('#v-tel').value, email: $('#v-mail').value};
+        }
+        if (EU.admin) d.vendedor_id = Number($('#v-vend').value);
+        await api('POST', '/api/vendas', d);
+      }
+    } catch (err) { erro.textContent = err.message; erro.hidden = false; return; }
+    dlg.close(); aviso(id ? 'Venda atualizada.' : 'Venda cadastrada.'); return rota();
+  },
+  async 'excluir-venda'(b) {
+    const rec = Number(b.dataset.rec) || 0;
+    const msg = rec > 0
+      ? `Esta venda já tem ${reais(rec)} recebido. Excluir apaga a venda, os pagamentos e as comissões dela. Continuar?`
+      : 'Excluir esta venda, com pagamentos e comissões?';
+    if (!confirm(msg)) return;
+    await api('DELETE', '/api/admin/vendas/' + b.dataset.id, {forcar: true});
+    aviso('Venda excluída.'); return rota();
+  },
   escopo: b => { equipe = b.dataset.v === '1'; return rota(); },
   async 'salvar-cfg'() {
     await api('PUT', '/api/admin/config', {comissao_setup_pct: num($('#p-setup').value), comissao_mensal_pct: num($('#p-mensal').value)});
