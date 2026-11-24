@@ -872,6 +872,9 @@ def criar_app():
         r.headers["X-Frame-Options"] = "DENY"
         r.headers["Referrer-Policy"] = "same-origin"
         r.headers["Content-Security-Policy"] = ("default-src 'self' 'unsafe-inline' data: blob:; "
+                                                "img-src 'self' data: blob: https://res.cloudinary.com; "
+                                                "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+                                                "font-src 'self' data: https://fonts.gstatic.com; "
                                                 "connect-src 'self'; frame-ancestors 'none'")
         if request.path.startswith(("/api/", "/app", "/login", "/conta")):
             r.headers["Cache-Control"] = "no-store"
@@ -1489,15 +1492,175 @@ def criar_app():
         return jsonify(ok=True)
 
     # ── vendas / pagamentos ────────────────────────────────────────────────
+    # ── vendas: listar, cadastrar manualmente, editar e excluir (excluir só admin) ──
+    def _venda_minha(vid):
+        v, u = db.session.get(Venda, vid), usuario_atual()
+        if not v or (v.vendedor_id != u.id and not u.is_admin):
+            abort(404)
+        return v
+
+    def _venda_json(v, empresa, vendedor):
+        setup = next((p for p in v.pagamentos if p.tipo == "setup"), None)
+        return dict(id=v.id, cliente=empresa, cliente_id=v.cliente_id, vendedor_id=v.vendedor_id, vendedor=vendedor,
+                    servico_id=v.servico_id, setup_cent=v.valor_setup_cent, mensal_cent=v.valor_mensal_cent,
+                    mensal_ativa=v.mensal_ativa, mensal_inicio=_fmt(v.mensal_inicio),
+                    setup_vence=_fmt(setup.vence_em) if setup else None,
+                    pct_setup=v.pct_setup, pct_mensal=v.pct_mensal, fechada_em=_fmt(v.fechada_em),
+                    recebido_cent=sum(p.valor_recebido_cent for p in v.pagamentos))
+
+    def _ajustar_comissao(p, pct=None):
+        """Recalcula o previsto. O percentual só muda onde ainda não entrou dinheiro nem repasse."""
+        c = p.comissao
+        if not c:
+            return
+        if pct is not None and p.valor_recebido_cent == 0 and c.valor_pago_cent == 0:
+            c.pct = pct
+        c.valor_previsto_cent = round(p.valor_cent * c.pct / 100)
+
     @app.get("/api/vendas")
     @login_obrigatorio
     def api_vendas():
-        stmt = escopo(select(Venda, Cliente.empresa).join(Cliente, Cliente.id == Venda.cliente_id), Venda.vendedor_id,
+        stmt = escopo(select(Venda, Cliente.empresa, User.nome).join(Cliente, Cliente.id == Venda.cliente_id)
+                      .join(User, User.id == Venda.vendedor_id), Venda.vendedor_id,
                       equipe=request.args.get("equipe") == "1")
         rows = db.session.execute(stmt.order_by(Venda.id.desc()).limit(200)).all()
-        return jsonify(ok=True, vendas=[dict(id=v.id, cliente=emp, cliente_id=v.cliente_id, vendedor_id=v.vendedor_id,
-                                             setup_cent=v.valor_setup_cent, mensal_cent=v.valor_mensal_cent,
-                                             mensal_ativa=v.mensal_ativa, fechada_em=_fmt(v.fechada_em)) for v, emp in rows])
+        return jsonify(ok=True, vendas=[_venda_json(v, emp, nome) for v, emp, nome in rows])
+
+    @app.post("/api/vendas")
+    @login_obrigatorio
+    def api_venda_criar():
+        """Cadastro manual. Cliente existente (cliente_id) ou novo (cliente_novo={empresa,...})."""
+        d, u = _json(), usuario_atual()
+        try:
+            setup, mensal = _centavos(d.get("setup_cent", 0), "Setup"), _centavos(d.get("mensal_cent", 0), "Mensalidade")
+            if setup + mensal <= 0:
+                raise ValueError("Informe o valor do setup e/ou da mensalidade.")
+            sid = d.get("servico_id") or None
+            if sid and not db.session.get(Servico, sid):
+                raise ValueError("Serviço inexistente.")
+            vendedor = u
+            if u.is_admin and d.get("vendedor_id"):
+                vendedor = db.session.get(User, d["vendedor_id"])
+                if not vendedor or vendedor.status != "ativo":
+                    raise ValueError("Vendedor inválido.")
+            cid = d.get("cliente_id")
+            if cid:
+                if isinstance(cid, bool) or not isinstance(cid, int):
+                    raise ValueError("Cliente inválido.")
+                cli = db.session.get(Cliente, cid)
+                if not cli or (cli.owner_id != u.id and not u.is_admin):
+                    raise ValueError("Cliente não encontrado.")
+            else:
+                novo = d.get("cliente_novo")
+                if not isinstance(novo, dict):
+                    raise ValueError("Escolha um cliente ou informe os dados do novo.")
+                cli = Cliente(owner_id=vendedor.id, empresa="", origem="manual")
+                _preencher_cliente(cli, novo, novo=True)
+                db.session.add(cli)
+                db.session.flush()
+            ps, pm = (_pct(d.get("pct_setup")), _pct(d.get("pct_mensal"))) if u.is_admin else (None, None)
+            venda = criar_venda(cli, vendedor, setup, mensal, sid, fechada_em=_data(d.get("fechada_em")),
+                                setup_vence=_data(d.get("setup_vence")), mensal_inicio=_data(d.get("mensal_inicio")),
+                                pct_setup=ps, pct_mensal=pm)
+            db.session.commit()
+        except ValueError as e:
+            db.session.rollback()
+            return _erro(str(e))
+        return jsonify(ok=True, venda_id=venda.id, cliente_id=cli.id)
+
+    @app.put("/api/vendas/<int:vid>")
+    @login_obrigatorio
+    def api_venda_editar(vid):
+        """Vendedor edita as próprias; admin edita qualquer. Percentuais: só admin.
+        Parcelas que já receberam dinheiro não são apagadas nem ficam abaixo do recebido."""
+        v, d, u = _venda_minha(vid), _json(), usuario_atual()
+        try:
+            setup = _centavos(d.get("setup_cent", v.valor_setup_cent), "Setup")
+            mensal = _centavos(d.get("mensal_cent", v.valor_mensal_cent), "Mensalidade")
+            if setup + mensal <= 0:
+                raise ValueError("Informe o valor do setup e/ou da mensalidade.")
+            if "servico_id" in d:
+                sid = d["servico_id"] or None
+                if sid and not db.session.get(Servico, sid):
+                    raise ValueError("Serviço inexistente.")
+                v.servico_id = sid
+            if d.get("fechada_em"):
+                v.fechada_em = _data(d["fechada_em"])
+            if u.is_admin:
+                if d.get("pct_setup") not in (None, ""):
+                    v.pct_setup = _pct(d["pct_setup"])
+                if d.get("pct_mensal") not in (None, ""):
+                    v.pct_mensal = _pct(d["pct_mensal"])
+            pct_s = v.pct_setup if u.is_admin else None
+            pct_m = v.pct_mensal if u.is_admin else None
+
+            # setup
+            pag = next((p for p in v.pagamentos if p.tipo == "setup"), None)
+            if pag:
+                if setup == 0:
+                    if pag.valor_recebido_cent > 0:
+                        raise ValueError("O setup já tem valor recebido e não pode ser zerado.")
+                    db.session.delete(pag)
+                else:
+                    if setup < pag.valor_recebido_cent:
+                        raise ValueError(f"O setup não pode ficar abaixo do já recebido ({_brl(pag.valor_recebido_cent)}).")
+                    pag.valor_cent = setup
+                    if d.get("setup_vence"):
+                        pag.vence_em = _data(d["setup_vence"])
+                    _ajustar_comissao(pag, pct_s)
+            elif setup > 0:
+                _novo_pagamento(v, "setup", "setup", setup, _data(d.get("setup_vence")) or v.fechada_em)
+            v.valor_setup_cent = setup
+
+            # mensalidade
+            novo_inicio = _data(d.get("mensal_inicio")) if d.get("mensal_inicio") else None
+            livres = [p for p in v.pagamentos if p.tipo == "mensalidade" and p.valor_recebido_cent == 0]
+            if mensal == 0:
+                for p in livres:
+                    db.session.delete(p)
+                v.mensal_ativa, v.valor_mensal_cent = False, 0
+            else:
+                reiniciar = (not v.mensal_ativa) or bool(novo_inicio and novo_inicio != v.mensal_inicio)
+                v.valor_mensal_cent, v.mensal_ativa = mensal, True
+                if novo_inicio:
+                    v.mensal_inicio = novo_inicio
+                elif not v.mensal_inicio:
+                    v.mensal_inicio = _add_meses(v.fechada_em, 1)
+                if reiniciar:
+                    for p in livres:
+                        db.session.delete(p)
+                    db.session.flush()
+                    manter_mensalidades(v)
+                else:
+                    for p in livres:
+                        p.valor_cent = mensal
+                        _ajustar_comissao(p, pct_m)
+            v.versao += 1
+            db.session.commit()
+        except ValueError as e:
+            db.session.rollback()
+            return _erro(str(e))
+        return jsonify(ok=True, venda_id=v.id)
+
+    @app.delete("/api/admin/vendas/<int:vid>")
+    @admin_obrigatorio
+    def admin_venda_excluir(vid):
+        """Só admin. Apaga venda + pagamentos + comissões. Com dinheiro já recebido exige forcar=true."""
+        v, d = db.session.get(Venda, vid), _json()
+        if not v:
+            abort(404)
+        if sum(p.valor_recebido_cent for p in v.pagamentos) > 0 and not d.get("forcar"):
+            return _erro("Esta venda já tem pagamentos recebidos. Confirme para excluir mesmo assim.", 409)
+        lead = db.session.get(Lead, v.lead_id) if v.lead_id else None
+        if lead and lead.status == "fechado":
+            lead.status = "negociacao"
+            lead.versao += 1
+            db.session.add(LeadHistorico(lead_id=lead.id, user_id=usuario_atual().id, tipo="status",
+                                         texto="Venda excluída; lead reaberto", status_de="fechado",
+                                         status_para="negociacao"))
+        db.session.delete(v)
+        db.session.commit()
+        return jsonify(ok=True)
 
     @app.get("/api/admin/pagamentos")
     @admin_obrigatorio
