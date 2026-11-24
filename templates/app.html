@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<title>{{ app_nome }}</title>
+<style>
+:root{--roxo:#6b3fe0;--roxo-esc:#5630b8;--roxo-claro:#efeafc;--tinta:#1d1a2b;--mudo:#6e6a80;--linha:#e6e3f0;--fundo:#f7f6fb;--card:#fff;--ok:#1e8e5a;--aviso:#b7791f;--erro:#c0392b;--r:16px}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--fundo);color:var(--tinta);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-tap-highlight-color:transparent}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:3px solid #cfc2f7;outline-offset:1px}
+svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+
+/* navegação: barra lateral no desktop, menu inferior no celular */
+nav{position:fixed;z-index:5;background:#fff;border:0 solid var(--linha);display:flex}
+nav a{display:flex;flex-direction:column;align-items:center;gap:2px;color:var(--mudo);text-decoration:none;font-size:11px;font-weight:600;padding:8px 4px;border-radius:12px}
+nav a.on{color:var(--roxo);background:var(--roxo-claro)}
+.logo{width:34px;height:34px;border-radius:10px;background:var(--roxo)}
+@media(min-width:800px){
+  nav{top:0;left:0;bottom:0;width:76px;flex-direction:column;align-items:stretch;gap:6px;padding:16px 8px;border-right-width:1px}
+  .logo{margin:0 auto 14px}
+  main{margin-left:76px}
+}
+@media(max-width:799px){
+  nav{left:0;right:0;bottom:0;justify-content:space-around;padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px));border-top-width:1px}
+  nav a{flex:1}.logo{display:none}
+  main{padding-bottom:84px}
+}
+main{max-width:980px;padding:24px 18px}
+@media(min-width:800px){main{padding:32px 36px;margin-right:auto}}
+h1{font-size:24px;margin:0 0 2px;letter-spacing:-.01em}
+h2{font-size:16px;margin:0 0 12px}
+.sub{color:var(--mudo);margin:0 0 22px}
+.grid{display:grid;gap:14px}
+@media(min-width:800px){.grid.dois{grid-template-columns:1fr 1fr}}
+.card{background:var(--card);border:1px solid var(--linha);border-radius:var(--r);padding:18px}
+.vazio{color:var(--mudo);font-size:14px;padding:6px 0}
+.linha{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--linha)}
+.linha:first-of-type{border-top:0}
+.linha small{display:block;color:var(--mudo)}
+.chip{display:inline-block;padding:2px 10px;border-radius:99px;font-size:12px;font-weight:600;background:var(--roxo-claro);color:var(--roxo-esc);white-space:nowrap}
+.chip.ok{background:#e4f5ec;color:var(--ok)}.chip.av{background:#fbf1de;color:var(--aviso)}.chip.er{background:#fdecea;color:var(--erro)}
+.num{font-size:22px;font-weight:700;letter-spacing:-.01em}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.kpis div small{display:block;color:var(--mudo);font-size:12px}
+.btn{border:0;border-radius:12px;padding:10px 16px;background:var(--roxo);color:#fff;font-weight:600;cursor:pointer;text-decoration:none;display:inline-block}
+.btn:hover{background:var(--roxo-esc)}
+.btn.sec{background:var(--roxo-claro);color:var(--roxo-esc)}
+.btn.peq{padding:6px 12px;font-size:13px;border-radius:10px}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.atalhos{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px}
+label{display:block;font-size:12px;font-weight:600;margin:10px 0 4px;color:var(--mudo)}
+input,select{width:100%;padding:10px 12px;border:1px solid var(--linha);border-radius:10px;background:#fff}
+.form{display:grid;gap:0 12px}
+@media(min-width:600px){.form{grid-template-columns:1fr 1fr}}
+.funil{display:flex;gap:12px;overflow-x:auto;padding-bottom:8px;scroll-snap-type:x proximity}
+.col{flex:0 0 240px;scroll-snap-align:start;background:#fff;border:1px solid var(--linha);border-radius:var(--r);padding:12px}
+.col h3{font-size:13px;margin:0 0 8px;display:flex;justify-content:space-between}
+.col .lead{padding:8px 10px;border-radius:10px;background:var(--fundo);margin-bottom:6px;font-size:14px}
+.col .lead small{display:block;color:var(--mudo)}
+.topo{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.seg{display:inline-flex;border:1px solid var(--linha);border-radius:12px;overflow:hidden;background:#fff}
+.seg button{border:0;background:none;padding:8px 14px;cursor:pointer;font-weight:600;color:var(--mudo)}
+.seg button.on{background:var(--roxo-claro);color:var(--roxo-esc)}
+details{border-top:1px solid var(--linha);padding:10px 0}
+summary{cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:10px;list-style:none}
+summary::-webkit-details-marker{display:none}
+.aviso{background:var(--roxo-claro);border-radius:12px;padding:12px 14px;margin-bottom:14px;word-break:break-all}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:90px;background:var(--tinta);color:#fff;padding:10px 16px;border-radius:12px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:20;max-width:90vw}
+#toast.on{opacity:1}
+@media(prefers-reduced-motion:reduce){ #toast{transition:none}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-inicio" viewBox="0 0 24 24"><path d="M3 11l9-8 9 8M5 10v10h14V10"/></symbol>
+  <symbol id="i-prospeccao" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></symbol>
+  <symbol id="i-vendas" viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8M15 7h6v6"/></symbol>
+  <symbol id="i-operacao" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="3"/><path d="M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2"/></symbol>
+  <symbol id="i-financeiro" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18M16 15h2"/></symbol>
+  <symbol id="i-perfil" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></symbol>
+</svg>
+
+<nav id="menu" aria-label="Principal"><div class="logo"></div></nav>
+<main id="view" aria-live="polite"></main>
+<div id="toast" role="status"></div>
+
+<script>
+const EU = {{ {'id': usuario.id, 'nome': usuario.nome, 'admin': usuario.is_admin}|tojson }};
+const CSRF = {{ csrf|tojson }};
+const PAGINAS = [['inicio','Início'],['prospeccao','Prospecção'],['vendas','Vendas'],['operacao','Operação']]
+  .concat(EU.admin ? [['financeiro','Financeiro']] : [])
+  .concat([['perfil', EU.admin ? 'Gestão' : 'Perfil']]);
+const STATUS = {novo:'Novo',em_contato:'Em contato',qualificado:'Qualificado',proposta_enviada:'Proposta enviada',negociacao:'Negociação',fechado:'Fechado',perdido:'Perdido'};
+const COM_STATUS = {aguardando:['Aguardando','av'],liberada:['Liberada','ok'],parcial:['Parcial',''],paga:['Paga','ok']};
+let equipe = false;
+
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const reais = c => ((c || 0) / 100).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+const num = v => (v === '' || v == null) ? null : Number(String(v).replace(',', '.'));
+
+async function api(metodo, url, corpo) {
+  const r = await fetch(url, {method:metodo, headers:{'Content-Type':'application/json','X-CSRF':CSRF}, body: corpo ? JSON.stringify(corpo) : undefined});
+  let d = {};
+  try { d = await r.json(); } catch (e) {}
+  if (r.status === 401) { location.href = '/login'; throw new Error('Faça login.'); }
+  if (!r.ok || d.ok === false) throw new Error(d.erro || 'Erro ' + r.status);
+  return d;
+}
+let _t;
+function aviso(msg) {
+  const t = $('#toast'); t.textContent = msg; t.classList.add('on');
+  clearTimeout(_t); _t = setTimeout(() => t.classList.remove('on'), 3200);
+}
+
+/* ---------- peças ---------- */
+const chipLead = s => `<span class="chip ${s==='fechado'?'ok':s==='perdido'?'er':''}">${esc(STATUS[s]||s)}</span>`;
+const chipCom = s => { const [t, c] = COM_STATUS[s] || [s, '']; return `<span class="chip ${c}">${t}</span>`; };
+const vazio = t => `<p class="vazio">${t}</p>`;
+const seletorEquipe = () => EU.admin ? `<div class="seg" role="group" aria-label="Escopo">
+  <button data-act="escopo" data-v="0" class="${equipe?'':'on'}">Meus</button>
+  <button data-act="escopo" data-v="1" class="${equipe?'on':''}">Equipe</button></div>` : '';
+
+function totaisCom(t) {
+  return `<div class="kpis">
+    <div><small>Previsto</small><span class="num">${reais(t.previsto_cent)}</span></div>
+    <div><small>A pagar agora</small><span class="num">${reais(t.a_pagar_cent)}</span></div>
+    <div><small>Já pago</small><span class="num">${reais(t.pago_cent)}</span></div></div>`;
+}
+
+/* ---------- páginas ---------- */
+const VIEWS = {
+  async inicio(el) {
+    const [l, c] = await Promise.all([api('GET', '/api/leads'), api('GET', '/api/comissoes')]);
+    const ativos = l.leads.filter(x => !['fechado', 'perdido'].includes(x.status));
+    const hora = new Date().getHours();
+    el.innerHTML = `<h1>${hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite'}, ${esc(EU.nome.split(' ')[0])}</h1>
+      <p class="sub">${ativos.length ? `Você tem ${ativos.length} lead${ativos.length>1?'s':''} em andamento.` : 'Nenhum lead em andamento no momento.'}</p>
+      <div class="atalhos">
+        <a class="btn" href="#prospeccao">Buscar empresas</a>
+        <a class="btn sec" href="#vendas">Ver funil</a>
+        <a class="btn sec" href="#operacao">Clientes</a></div>
+      <div class="grid dois">
+        <section class="card"><h2>Leads em andamento</h2>
+          ${ativos.slice(0, 8).map(x => `<div class="linha"><div>${esc(x.empresa)}<small>${esc(x.contato || 'Sem contato')} · ${reais(x.valor_estimado_cent)}</small></div>${chipLead(x.status)}</div>`).join('') || vazio('Quando você cadastrar ou importar leads, eles aparecem aqui.')}
+        </section>
+        <section class="card"><h2>Minhas comissões</h2>${totaisCom(c.totais)}
+          ${c.comissoes.length ? '' : vazio('As comissões aparecem quando uma venda é fechada.')}
+        </section></div>`;
+  },
+
+  async prospeccao(el) {
+    const me = (await api('GET', '/api/me')).usuario;
+    el.innerHTML = `<h1>Prospecção</h1>
+      <p class="sub">Encontre empresas por segmento e cidade. Os resultados são potenciais, não contatos validados.</p>
+      <section class="card">
+        <div class="form">
+          <div><label for="q">Segmento ou palavra-chave</label><input id="q" placeholder="Clínicas odontológicas"></div>
+          <div><label for="cid">Cidade ou região</label><input id="cid" placeholder="São Paulo"></div></div>
+        <p style="margin:14px 0 0"><button class="btn" disabled>Buscar</button></p>
+        <p class="vazio">${me.serper ? 'Chave Serper cadastrada (' + esc(me.serper) + ').' : 'Você ainda não tem chave Serper. Cadastre em Perfil.'} A busca será ativada quando a rota <code>/api/prospeccao</code> existir no backend.</p>
+      </section>`;
+  },
+
+  async vendas(el) {
+    const [l, c] = await Promise.all([api('GET', '/api/leads' + (equipe ? '?equipe=1' : '')), api('GET', '/api/comissoes' + (equipe ? '?equipe=1' : ''))]);
+    const colunas = Object.keys(STATUS).map(s => {
+      const itens = l.leads.filter(x => x.status === s);
+      return `<div class="col"><h3><span>${STATUS[s]}</span><span class="chip">${itens.length}</span></h3>
+        ${itens.map(x => `<div class="lead">${esc(x.empresa)}<small>${esc(x.contato || '—')} · ${reais(x.valor_estimado_cent)}</small></div>`).join('') || vazio('Vazio')}</div>`;
+    }).join('');
+    el.innerHTML = `<div class="topo"><div><h1>Vendas</h1><p class="sub">Funil e comissões${equipe ? ' da equipe' : ''}.</p></div>${seletorEquipe()}</div>
+      <div class="funil" tabindex="0" aria-label="Funil comercial">${colunas}</div>
+      <section class="card" style="margin-top:16px"><h2>Comissões</h2>${totaisCom(c.totais)}
+        ${c.comissoes.slice(0, 20).map(x => `<div class="linha"><div>Venda #${x.venda_id}<small>${x.pct}% · previsto ${reais(x.previsto_cent)} · liberado ${reais(x.liberado_cent)}</small></div>${chipCom(x.status)}</div>`).join('')}
+      </section>`;
+  },
+
+  async operacao(el) {
+    el.innerHTML = `<h1>Operação</h1><p class="sub">Clientes conquistados, contratos, pagamentos e entregas.</p>
+      <section class="card">${vazio('Esta página será ligada quando o backend tiver as rotas de clientes e projetos.')}</section>`;
+  },
+
+  async financeiro(el) {
+    const [c, cfg] = await Promise.all([api('GET', '/api/comissoes?equipe=1'), api('GET', '/api/admin/config')]);
+    const k = cfg.config;
+    el.innerHTML = `<h1>Financeiro</h1><p class="sub">Comissões da equipe e regras de percentual.</p>
+      <div class="grid dois">
+      <section class="card"><h2>Percentual padrão</h2>
+        <p class="vazio" style="margin-top:-6px">Vale para quem não tem percentual próprio. Vendas antigas não mudam.</p>
+        <div class="form">
+          <div><label for="p-setup">Setup (%)</label><input id="p-setup" inputmode="decimal" value="${k.comissao_setup_pct}"></div>
+          <div><label for="p-mensal">Mensalidade (%)</label><input id="p-mensal" inputmode="decimal" value="${k.comissao_mensal_pct}"></div></div>
+        <p style="margin:14px 0 0"><button class="btn" data-act="salvar-cfg">Salvar percentuais</button></p></section>
+      <section class="card"><h2>Comissões da equipe</h2>${totaisCom(c.totais)}</section></div>
+      <section class="card" style="margin-top:14px"><h2>Repasses</h2>
+        ${c.comissoes.map(x => `<div class="linha"><div>Venda #${x.venda_id} · vendedor #${x.vendedor_id}<small>${x.pct}% · liberado ${reais(x.liberado_cent)} · pago ${reais(x.pago_cent)}</small></div>
+          <div>${chipCom(x.status)} ${x.a_pagar_cent > 0 ? `<button class="btn peq" data-act="pagar" data-id="${x.id}">Pagar ${reais(x.a_pagar_cent)}</button>` : ''}</div></div>`).join('') || vazio('Nenhuma comissão ainda.')}
+      </section>`;
+  },
+
+  async perfil(el) {
+    const me = (await api('GET', '/api/me')).usuario;
+    const us = EU.admin ? (await api('GET', '/api/admin/usuarios')).usuarios : [];
+    el.innerHTML = `<h1>${EU.admin ? 'Gestão' : 'Perfil'}</h1><p class="sub">${esc(me.nome)} · ${esc(me.email)}</p>
+      <div id="banner"></div>
+      <div class="grid dois">
+      <section class="card"><h2>Minhas chaves de API</h2>
+        <p class="vazio" style="margin-top:-6px">Guardadas cifradas. Deixe em branco para manter a atual.</p>
+        <label for="k-groq">Groq ${me.groq ? '(' + esc(me.groq) + ')' : ''}</label><input id="k-groq" type="password" autocomplete="off">
+        <label for="k-serper">Serper ${me.serper ? '(' + esc(me.serper) + ')' : ''}</label><input id="k-serper" type="password" autocomplete="off">
+        <p style="margin:14px 0 0"><button class="btn" data-act="salvar-chaves">Salvar chaves</button></p></section>
+      <section class="card"><h2>Conta</h2>
+        <p><a class="btn sec" href="/conta/senha">Trocar senha</a></p>
+        <form method="post" action="/sair"><input type="hidden" name="csrf" value="${esc(CSRF)}"><button class="btn sec">Sair</button></form></section></div>
+      ${EU.admin ? `<section class="card" style="margin-top:14px"><h2>Equipe</h2>
+        <div class="form">
+          <div><label for="n-nome">Nome</label><input id="n-nome"></div>
+          <div><label for="n-email">E-mail</label><input id="n-email" type="email"></div>
+          <div><label for="n-papel">Papel</label><select id="n-papel"><option value="vendedor">Vendedor</option><option value="admin">Administrador</option></select></div>
+          <div><label for="n-setup">Setup % (vazio = padrão)</label><input id="n-setup" inputmode="decimal"></div>
+          <div><label for="n-mensal">Mensalidade % (vazio = padrão)</label><input id="n-mensal" inputmode="decimal"></div></div>
+        <p style="margin:14px 0 6px"><button class="btn" data-act="criar-user">Criar acesso</button></p>
+        ${us.map(u => `<details data-uid="${u.id}"><summary><span>${esc(u.nome)}<small style="display:block;color:var(--mudo)">${esc(u.email)} · ${u.papel}</small></span>
+            <span class="chip ${u.status==='ativo'?'ok':'er'}">${u.status}</span></summary>
+          <div class="form">
+            <div><label>Setup %</label><input data-f="comissao_setup_pct" inputmode="decimal" value="${u.comissao_setup_pct ?? ''}" placeholder="padrão"></div>
+            <div><label>Mensalidade %</label><input data-f="comissao_mensal_pct" inputmode="decimal" value="${u.comissao_mensal_pct ?? ''}" placeholder="padrão"></div>
+            <div><label>Groq ${u.groq ? '(' + esc(u.groq) + ')' : ''}</label><input data-f="groq" type="password" autocomplete="off"></div>
+            <div><label>Serper ${u.serper ? '(' + esc(u.serper) + ')' : ''}</label><input data-f="serper" type="password" autocomplete="off"></div></div>
+          <p style="margin:12px 0 0;display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn peq" data-act="salvar-user">Salvar</button>
+            <button class="btn peq sec" data-act="reset-senha">Gerar senha provisória</button>
+            ${u.id !== EU.id ? `<button class="btn peq sec" data-act="alternar" data-st="${u.status==='ativo'?'bloqueado':'ativo'}">${u.status==='ativo'?'Desativar acesso':'Reativar acesso'}</button>` : ''}</p></details>`).join('')}
+      </section>` : ''}`;
+  }
+};
+
+/* ---------- ações ---------- */
+const ACOES = {
+  escopo: b => { equipe = b.dataset.v === '1'; return rota(); },
+  async 'salvar-cfg'() {
+    await api('PUT', '/api/admin/config', {comissao_setup_pct: num($('#p-setup').value), comissao_mensal_pct: num($('#p-mensal').value)});
+    aviso('Percentuais salvos.');
+  },
+  async pagar(b) { const r = await api('POST', `/api/admin/comissoes/${b.dataset.id}/pagar`, {}); aviso('Pago ' + reais(r.pago_agora_cent) + '.'); return rota(); },
+  async 'salvar-chaves'() {
+    const d = {};
+    if ($('#k-groq').value.trim()) d.groq = $('#k-groq').value.trim();
+    if ($('#k-serper').value.trim()) d.serper = $('#k-serper').value.trim();
+    if (!Object.keys(d).length) return aviso('Digite uma chave para salvar.');
+    await api('PUT', '/api/me/chaves', d); aviso('Chaves salvas.'); return rota();
+  },
+  async 'criar-user'() {
+    const r = await api('POST', '/api/admin/usuarios', {nome: $('#n-nome').value, email: $('#n-email').value, papel: $('#n-papel').value,
+      comissao_setup_pct: num($('#n-setup').value), comissao_mensal_pct: num($('#n-mensal').value)});
+    await rota(); mostrarSenha(r.usuario.email, r.senha_temporaria);
+  },
+  async 'salvar-user'(b) {
+    const box = b.closest('details'), d = {};
+    box.querySelectorAll('[data-f]').forEach(i => {
+      const f = i.dataset.f;
+      if (f.startsWith('comissao')) d[f] = num(i.value);
+      else if (i.value.trim()) d[f] = i.value.trim();
+    });
+    await api('PUT', '/api/admin/usuarios/' + box.dataset.uid, d); aviso('Usuário salvo.'); return rota();
+  },
+  async 'reset-senha'(b) {
+    const id = b.closest('details').dataset.uid;
+    const r = await api('PUT', '/api/admin/usuarios/' + id, {resetar_senha: true});
+    await rota(); mostrarSenha(r.usuario.email, r.senha_temporaria);
+  },
+  async alternar(b) { await api('PUT', '/api/admin/usuarios/' + b.closest('details').dataset.uid, {status: b.dataset.st}); aviso('Acesso atualizado.'); return rota(); }
+};
+
+function mostrarSenha(email, senha) {
+  const el = $('#banner'); if (!el) return;
+  el.innerHTML = `<div class="aviso"><strong>Senha provisória de ${esc(email)}:</strong> <code>${esc(senha)}</code><br>
+    Ela aparece só agora. A pessoa troca no primeiro acesso.</div>`;
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-act]'); if (!b || !ACOES[b.dataset.act]) return;
+  b.disabled = true;
+  try { await ACOES[b.dataset.act](b); } catch (err) { aviso(err.message); }
+  b.disabled = false;
+});
+
+/* ---------- rota ---------- */
+function desenharMenu() {
+  const atual = (location.hash || '#inicio').slice(1);
+  $('#menu').innerHTML = '<div class="logo"></div>' + PAGINAS.map(([id, nome]) =>
+    `<a href="#${id}" class="${id === atual ? 'on' : ''}" ${id === atual ? 'aria-current="page"' : ''}><svg><use href="#i-${id}"/></svg>${nome}</a>`).join('');
+}
+async function rota() {
+  let id = (location.hash || '#inicio').slice(1);
+  if (!VIEWS[id] || !PAGINAS.some(p => p[0] === id)) id = 'inicio';
+  desenharMenu();
+  const el = $('#view');
+  try { await VIEWS[id](el); }
+  catch (err) { el.innerHTML = `<section class="card"><h2>Não foi possível carregar</h2><p class="vazio">${esc(err.message)}</p><button class="btn" data-act="escopo" data-v="${equipe?1:0}">Tentar de novo</button></section>`; }
+}
+addEventListener('hashchange', () => { rota(); window.scrollTo(0, 0); });
+rota();
+</script>
+</body>
+</html>
