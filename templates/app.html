@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="light">
-<meta name="theme-color" content="#190D2D">
+<meta name="theme-color" content="#7138E8">
 <title>{{ app_nome }}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -18,33 +18,29 @@ button,input,select{font:inherit;color:inherit}
 :focus-visible{outline:3px solid #cdb8ff;outline-offset:1px}
 svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
 
-/* marca no topo (celular) */
-.marca{display:none}
-
-/* navegação: barra lateral escura no desktop, menu inferior no celular */
-nav{position:fixed;z-index:5;background:#fff;border:0 solid var(--linha);display:flex}
-nav a{display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--mudo);text-decoration:none;font-size:10px;font-weight:600;padding:8px 2px;border-radius:14px}
-nav a.on{color:var(--roxo);background:var(--roxo-claro)}
-.logo{height:28px;width:auto;display:block}
-@media(min-width:800px){
-  nav{top:0;left:0;bottom:0;width:232px;flex-direction:column;align-items:stretch;gap:4px;padding:24px 14px;background:linear-gradient(180deg,var(--roxo-prof) 0%,#27124d 100%)}
-  nav .logo{height:30px;align-self:flex-start;margin:2px 14px 26px}
-  nav a{flex-direction:row;gap:12px;font-size:13.5px;padding:11px 14px;color:#cdbfee}
-  nav a:hover{background:rgba(255,255,255,.08);color:#fff}
-  nav a.on{background:var(--roxo);color:#fff;box-shadow:0 10px 24px -10px rgba(113,56,232,.9)}
-  nav a.on::after{content:"";width:6px;height:6px;border-radius:50%;background:var(--lima);margin-left:auto}
-  main{margin-left:232px}
-}
+/* cabeçalho: logo à esquerda, menu à direita (hambúrguer no celular) */
+.topbar{position:sticky;top:0;z-index:10;background:var(--roxo);display:flex;align-items:center;justify-content:space-between;gap:16px;padding:calc(14px + env(safe-area-inset-top,0px)) 40px 14px;box-shadow:0 12px 30px -20px rgba(25,13,45,.7)}
+.logo{height:30px;width:auto;display:block}
+.burger{display:none;align-items:center;justify-content:center;width:42px;height:42px;border:0;border-radius:12px;background:rgba(255,255,255,.16);color:#fff;cursor:pointer}
+.burger svg{width:22px;height:22px}
+nav{display:flex;align-items:center;gap:4px}
+nav a{display:flex;align-items:center;gap:8px;color:#fff;text-decoration:none;font-size:13.5px;font-weight:600;padding:9px 16px;border-radius:999px}
+nav a svg{display:none}
+nav a:hover{background:rgba(255,255,255,.16)}
+nav a.on{background:var(--roxo-prof)}
+nav a.on::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--lima)}
 @media(max-width:799px){
-  .marca{display:flex;align-items:center;position:sticky;top:0;z-index:4;background:var(--roxo-prof);padding:calc(12px + env(safe-area-inset-top,0px)) 18px 12px}
-  .marca .logo{height:24px}
-  nav{left:0;right:0;bottom:0;justify-content:space-around;padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px));border-top-width:1px;box-shadow:0 -10px 30px -22px rgba(113,56,232,.5)}
-  nav a{flex:1}
-  nav .logo{display:none}
-  main{padding-bottom:84px}
+  .topbar{padding:calc(12px + env(safe-area-inset-top,0px)) 18px 12px}
+  .logo{height:26px}
+  .burger{display:inline-flex}
+  nav{display:none;position:absolute;top:100%;left:0;right:0;flex-direction:column;align-items:stretch;gap:4px;padding:12px 14px 18px;background:var(--roxo-prof);border-radius:0 0 24px 24px;box-shadow:0 24px 40px -20px rgba(25,13,45,.7)}
+  nav.aberto{display:flex}
+  nav a{padding:13px 16px;border-radius:14px;font-size:14px;color:#e4dafb}
+  nav a svg{display:block}
+  nav a.on{background:var(--roxo);color:#fff}
 }
-main{max-width:1040px;padding:24px 18px}
-@media(min-width:800px){main{padding:36px 40px;margin-right:auto}}
+main{max-width:1120px;margin:0 auto;padding:24px 18px}
+@media(min-width:800px){main{padding:36px 40px}}
 h1{font-size:clamp(22px,3vw,28px);font-weight:800;margin:0 0 4px;letter-spacing:-.03em;line-height:1.15}
 h2{font-size:15px;font-weight:700;margin:0 0 12px;letter-spacing:-.01em}
 .sub{color:var(--mudo);margin:0 0 24px}
@@ -87,7 +83,7 @@ summary{cursor:pointer;display:flex;justify-content:space-between;align-items:ce
 summary::-webkit-details-marker{display:none}
 .aviso{background:var(--roxo-claro);border-left:4px solid var(--roxo);border-radius:14px;padding:12px 14px;margin-bottom:14px;word-break:break-all}
 .aviso code,.vazio code{background:#fff;border:1px solid var(--linha);border-radius:6px;padding:1px 6px;font-size:12px}
-#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:90px;background:var(--roxo-prof);color:#fff;padding:11px 18px;border-radius:999px;font-size:13px;font-weight:600;opacity:0;pointer-events:none;transition:opacity .2s;z-index:20;max-width:90vw;box-shadow:0 14px 34px -14px rgba(25,13,45,.7)}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:28px;background:var(--roxo-prof);color:#fff;padding:11px 18px;border-radius:999px;font-size:13px;font-weight:600;opacity:0;pointer-events:none;transition:opacity .2s;z-index:20;max-width:90vw;box-shadow:0 14px 34px -14px rgba(25,13,45,.7)}
 #toast.on{opacity:1}
 @media(prefers-reduced-motion:reduce){ #toast{transition:none}}
 </style>
@@ -102,15 +98,17 @@ summary::-webkit-details-marker{display:none}
   <symbol id="i-perfil" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></symbol>
 </svg>
 
-<header class="marca"><img class="logo" src="https://res.cloudinary.com/dhu1cqvrb/image/upload/f_auto,q_auto,h_80/v1779207400/leanttro_bohuce.png" alt="Leanttro"></header>
-<nav id="menu" aria-label="Principal"><img class="logo" src="https://res.cloudinary.com/dhu1cqvrb/image/upload/f_auto,q_auto,h_80/v1779207400/leanttro_bohuce.png" alt="Leanttro"></nav>
+<header class="topbar">
+  <a href="#inicio" aria-label="Leanttro - início"><img class="logo" src="https://res.cloudinary.com/dhu1cqvrb/image/upload/f_auto,q_auto,h_80/v1779207400/leanttro_bohuce.png" alt="Leanttro"></a>
+  <button class="burger" id="burger" type="button" aria-label="Abrir menu" aria-expanded="false" aria-controls="menu"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+  <nav id="menu" aria-label="Principal"></nav>
+</header>
 <main id="view" aria-live="polite"></main>
 <div id="toast" role="status"></div>
 
 <script>
 const EU = {{ {'id': usuario.id, 'nome': usuario.nome, 'admin': usuario.is_admin}|tojson }};
 const CSRF = {{ csrf|tojson }};
-const LOGO = 'https://res.cloudinary.com/dhu1cqvrb/image/upload/f_auto,q_auto,h_80/v1779207400/leanttro_bohuce.png';
 const PAGINAS = [['inicio','Início'],['prospeccao','Prospecção'],['vendas','Vendas'],['operacao','Operação']]
   .concat(EU.admin ? [['financeiro','Financeiro']] : [])
   .concat([['perfil', EU.admin ? 'Gestão' : 'Perfil']]);
@@ -314,7 +312,7 @@ document.addEventListener('click', async e => {
 /* ---------- rota ---------- */
 function desenharMenu() {
   const atual = (location.hash || '#inicio').slice(1);
-  $('#menu').innerHTML = '<img class="logo" src="' + LOGO + '" alt="Leanttro">' + PAGINAS.map(([id, nome]) =>
+  $('#menu').innerHTML = PAGINAS.map(([id, nome]) =>
     `<a href="#${id}" class="${id === atual ? 'on' : ''}" ${id === atual ? 'aria-current="page"' : ''}><svg><use href="#i-${id}"/></svg>${nome}</a>`).join('');
 }
 async function rota() {
@@ -325,6 +323,17 @@ async function rota() {
   try { await VIEWS[id](el); }
   catch (err) { el.innerHTML = `<section class="card"><h2>Não foi possível carregar</h2><p class="vazio">${esc(err.message)}</p><button class="btn" data-act="escopo" data-v="${equipe?1:0}">Tentar de novo</button></section>`; }
 }
+/* menu hambúrguer (celular) */
+const burger = $('#burger'), menuEl = $('#menu');
+const ICO_MENU = '<path d="M4 7h16M4 12h16M4 17h16"/>', ICO_X = '<path d="M6 6l12 12M18 6L6 18"/>';
+function menuAberto(a) {
+  menuEl.classList.toggle('aberto', a);
+  burger.setAttribute('aria-expanded', a); burger.setAttribute('aria-label', a ? 'Fechar menu' : 'Abrir menu');
+  burger.firstElementChild.innerHTML = a ? ICO_X : ICO_MENU;
+}
+burger.addEventListener('click', () => menuAberto(!menuEl.classList.contains('aberto')));
+menuEl.addEventListener('click', e => { if (e.target.closest('a')) menuAberto(false); });
+addEventListener('keydown', e => { if (e.key === 'Escape') menuAberto(false); });
 addEventListener('hashchange', () => { rota(); window.scrollTo(0, 0); });
 rota();
 </script>
