@@ -8,13 +8,13 @@
 <title>{{ app_nome }}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root{--roxo:#7943e2;--roxo-esc:#6532cf;--tinta:#071421;--escuro:#120b24;--roxo-claro:#ece5fd;--lavanda:#f4effd;--linha:#dfe6e9;--mudo:#425064;--fundo:#f8f6fd;--card:#fff;--lima:#D7F43A;--ok:#1e8e5a;--aviso:#b7791f;--erro:#c0392b;--r:13px;--sombra:0 5px 15px #0a1a2510}
 *{box-sizing:border-box}
 html,body{margin:0}
-body{min-height:100vh;background:linear-gradient(110deg,var(--lavanda),var(--fundo)) fixed;color:#07111b;font:14px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-tap-highlight-color:transparent}
-button,input,select{font:inherit;color:inherit}
+body{min-height:100vh;background:linear-gradient(110deg,var(--lavanda),var(--fundo)) fixed;color:#07111b;font:14px/1.5 "DM Sans",Arial,sans-serif;-webkit-tap-highlight-color:transparent}
+button,input,select,textarea{font:inherit;color:inherit}
 :focus-visible{outline:3px solid #cdb8ff;outline-offset:1px}
 svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
 
@@ -22,6 +22,8 @@ svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke
 .topbar{position:sticky;top:0;z-index:10;background:var(--roxo);color:#fff;box-shadow:0 2px 14px #0002;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:calc(0px + env(safe-area-inset-top,0px)) 40px 0;min-height:76px;font-family:"DM Sans",Arial,sans-serif}
 .topbar>a{display:block}
 .logo{height:36px;width:auto;display:block;filter:brightness(0) invert(1)}
+.logo[hidden],.logo-txt[hidden]{display:none}
+.logo-txt{font:italic 900 27px/1 "DM Sans",Arial,sans-serif;letter-spacing:-1.5px;color:#fff;display:block}
 .burger{display:none;align-items:center;justify-content:center;width:42px;height:42px;border:0;border-radius:10px;background:#ffffff24;color:#fff;cursor:pointer}
 .burger svg{width:22px;height:22px}
 nav{display:flex;align-items:center;gap:6px}
@@ -100,7 +102,7 @@ summary::-webkit-details-marker{display:none}
 </svg>
 
 <header class="topbar">
-  <a href="#inicio" aria-label="Leanttro - início"><img class="logo" src="https://res.cloudinary.com/dhu1cqvrb/image/upload/f_auto,q_auto,h_80/v1779207400/leanttro_bohuce.png" alt="Leanttro"></a>
+  <a href="#inicio" aria-label="Leanttro - início"><img class="logo" src="https://res.cloudinary.com/dhu1cqvrb/image/upload/f_auto,q_auto,h_80/v1779207400/leanttro_bohuce.png" alt="" width="150" height="36" crossorigin="anonymous" referrerpolicy="no-referrer" decoding="async" onerror="this.onerror=null;this.hidden=true;this.nextElementSibling.hidden=false"><span class="logo-txt" hidden>LEANTTRO.</span></a>
   <button class="burger" id="burger" type="button" aria-label="Abrir menu" aria-expanded="false" aria-controls="menu"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
   <nav id="menu" aria-label="Principal"></nav>
 </header>
