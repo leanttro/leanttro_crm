@@ -71,7 +71,111 @@ summary::-webkit-details-marker{display:none}
 .aviso{background:var(--roxo-claro);border-radius:12px;padding:12px 14px;margin-bottom:14px;word-break:break-all}
 #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:90px;background:var(--tinta);color:#fff;padding:10px 16px;border-radius:12px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:20;max-width:90vw}
 #toast.on{opacity:1}
+
+.col .lead{display:block;width:100%;text-align:left;border:0;cursor:pointer}
+.col .lead:hover{background:var(--roxo-claro)}
+textarea{width:100%;padding:10px 12px;border:1px solid var(--linha);border-radius:10px;background:#fff;font:inherit;min-height:84px;resize:vertical}
+.acoes{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.btn.perigo{background:#fdecea;color:var(--erro)}
+.clic{width:100%;text-align:left;background:none;border:0;padding:0;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:12px}
+.sep{border-top:1px solid var(--linha);margin:18px 0 6px;padding-top:14px}
+.sep h3{font-size:14px;margin:0 0 6px}
+dialog{border:1px solid var(--linha);border-radius:20px;padding:0;width:min(640px,calc(100vw - 24px));max-height:calc(100vh - 32px);color:var(--tinta);background:#fff}
+dialog::backdrop{background:rgba(29,26,43,.45)}
+.dlg-in{padding:22px 22px 24px}
+.dlg-topo{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:6px}
+.dlg-topo h2{font-size:19px;margin:0}
+.x{border:0;background:var(--fundo);border-radius:10px;width:34px;height:34px;cursor:pointer;font-size:18px;line-height:1}
+.hist{font-size:13px;color:var(--mudo);padding:6px 0;border-top:1px solid var(--linha)}
+.hist b{color:var(--tinta);font-weight:600}
+.mes{max-width:180px}
 @media(prefers-reduced-motion:reduce){ #toast{transition:none}}
+
+
+/* ===== LEANTTRO / camada visual da identidade ===== */
+:root{
+  --roxo:#7138E8;--roxo-esc:#5425C5;--roxo-claro:#F3EDFF;
+  --tinta:#171127;--mudo:#706B80;--linha:#E8E1F2;--fundo:#FAF9FC;
+  --card:#FFFFFF;--r:18px;
+}
+html{scroll-behavior:smooth}
+body{background:var(--fundo);color:var(--tinta);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;letter-spacing:-.012em}
+button,input,select,textarea{font:inherit}
+:focus-visible{outline:3px solid rgba(113,56,232,.28);outline-offset:2px}
+nav{background:#fff;border-color:var(--linha);box-shadow:8px 0 32px rgba(35,18,65,.035)}
+.logo-link{display:flex;align-items:center;justify-content:center;padding:10px 8px 22px;margin:0 0 12px;border-radius:0!important;background:transparent!important}
+.logo{display:block;width:158px;height:auto;max-width:100%;object-fit:contain;border-radius:0;background:transparent}
+nav a{color:#777184;font-size:13px;font-weight:600;letter-spacing:0;transition:background .18s ease,color .18s ease}
+nav a:hover{color:var(--roxo);background:#F8F5FF}
+nav a.on{color:var(--roxo);background:var(--roxo-claro);position:relative}
+nav a.on:before{content:"";position:absolute;background:var(--roxo);border-radius:0 5px 5px 0}
+.marca-mobile{display:none}
+@media(min-width:800px){
+  nav{top:0;left:0;bottom:0;width:232px;flex-direction:column;align-items:stretch;gap:5px;padding:24px 16px;border-right-width:1px}
+  .logo-link{justify-content:flex-start;padding:6px 8px 24px;margin:0 0 10px}
+  .logo{width:164px}
+  nav a:not(.logo-link){flex-direction:row;justify-content:flex-start;align-items:center;gap:13px;padding:12px 14px;border-radius:12px;font-size:13px}
+  nav a.on:before{left:-16px;top:9px;bottom:9px;width:3px}
+  main{margin-left:232px;max-width:1320px}
+  main{padding:42px 48px}
+}
+@media(max-width:799px){
+  .marca-mobile{height:64px;display:flex;align-items:center;padding:0 18px;background:#fff;border-bottom:1px solid var(--linha)}
+  .marca-mobile a{display:inline-flex;align-items:center}
+  .marca-mobile img{display:block;width:142px;height:auto;max-height:38px;object-fit:contain}
+  nav{left:0;right:0;bottom:0;justify-content:space-around;gap:2px;padding:7px 5px calc(7px + env(safe-area-inset-bottom,0px));border-top-width:1px;box-shadow:0 -8px 28px rgba(35,18,65,.07)}
+  .logo-link{display:none}
+  nav a{flex:1;min-width:0;padding:7px 2px;border-radius:11px;font-size:10px;gap:4px}
+  nav a.on:before{display:none}
+  main{padding:22px 15px 92px}
+}
+h1{font-size:clamp(24px,3vw,30px);font-weight:800;letter-spacing:-.045em;line-height:1.15;margin:0 0 7px;color:var(--tinta)}
+h2{font-size:16px;font-weight:750;letter-spacing:-.025em;color:var(--tinta)}
+.sub{color:var(--mudo);font-size:14px;line-height:1.6;margin:0 0 24px}
+.grid{gap:16px}
+.card{background:var(--card);border:1px solid var(--linha);border-radius:18px;padding:20px;box-shadow:0 5px 18px rgba(35,18,65,.025)}
+.linha{border-top-color:#F0ECF5;padding:12px 0}
+.linha small,.col .lead small{color:#858092}
+.chip{background:#F0E9FF;color:#5B2BCB;font-weight:700;padding:4px 10px}
+.chip.ok{background:#E7F6EE;color:#18794E}.chip.av{background:#FFF4DE;color:#94600C}.chip.er{background:#FDEBEA;color:#B42318}
+.num{font-size:clamp(18px,2vw,23px);font-weight:800;letter-spacing:-.045em;color:var(--tinta);font-variant-numeric:tabular-nums}
+.kpis{gap:14px}
+.kpis div{min-width:0}
+.kpis div small{font-size:11px;font-weight:650;color:var(--mudo);margin-bottom:3px}
+.btn{background:var(--roxo);border-radius:11px;padding:10px 16px;font-weight:700;box-shadow:0 4px 10px rgba(113,56,232,.13);transition:transform .16s ease,background .16s ease,box-shadow .16s ease}
+.btn:hover{background:var(--roxo-esc);box-shadow:0 6px 15px rgba(113,56,232,.2);transform:translateY(-1px)}
+.btn.sec{background:#F1EBFF;color:#582CC5;box-shadow:none}
+.btn.sec:hover{background:#E8DCFF}
+.btn.peq{box-shadow:none}
+.btn.perigo{background:#FDEBEA;color:#B42318;box-shadow:none}
+input,select,textarea{border:1px solid #E3DDED;border-radius:11px;background:#fff;transition:border-color .16s ease,box-shadow .16s ease}
+input:focus,select:focus,textarea:focus{outline:0;border-color:#A987F5;box-shadow:0 0 0 3px rgba(113,56,232,.1)}
+label{font-size:12px;font-weight:700;color:#625C70;margin:12px 0 6px}
+.col{background:#F7F4FC;border:1px solid #EAE3F3;border-radius:16px;padding:13px}
+.col h3{font-size:12px;font-weight:750;color:#5D566B}
+.col .lead{background:#fff;border:1px solid #EEE9F4;border-radius:11px;padding:11px;margin-bottom:8px;line-height:1.4}
+.col .lead:hover{background:#F5F0FF;border-color:#DCCBFF}
+.seg{border-color:#E7E0EF;border-radius:11px;padding:3px}
+.seg button{border-radius:8px;font-size:12px}
+.seg button.on{background:var(--roxo-claro);color:#582CC5}
+.aviso{background:#F3EDFF;border:1px solid #E5D9FF;color:#49328A;border-radius:13px}
+#toast{background:#211735;border:1px solid rgba(255,255,255,.1);box-shadow:0 10px 30px rgba(20,10,35,.2)}
+dialog{border:1px solid var(--linha);border-radius:20px;box-shadow:0 24px 80px rgba(25,13,45,.2)}
+dialog::backdrop{background:rgba(25,13,45,.48);backdrop-filter:blur(3px)}
+.dlg-in{padding:24px}
+.dlg-topo h2{font-size:20px;font-weight:800}
+.x{background:#F3EFF8;color:#5E566C}
+details{border-top-color:#EEE9F4}
+.funil{padding:2px 2px 12px}
+.atalhos{gap:9px;margin-bottom:20px}
+@media(max-width:520px){
+  .card{padding:16px;border-radius:16px}
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+  .num{font-size:19px}
+  .btn{padding:10px 13px}
+}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*:before,*:after{transition:none!important}}
+
 </style>
 </head>
 <body>
@@ -84,8 +188,12 @@ summary::-webkit-details-marker{display:none}
   <symbol id="i-perfil" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></symbol>
 </svg>
 
-<nav id="menu" aria-label="Principal"><div class="logo"></div></nav>
+<header class="marca-mobile" aria-label="Leanttro">
+  <a href="#inicio" aria-label="Ir para o início"><img src="https://res.cloudinary.com/dhu1cqvrb/image/upload/f_auto,q_auto,h_80/v1779207400/leanttro_bohuce.png" alt="Leanttro"></a>
+</header>
+<nav id="menu" aria-label="Principal"></nav>
 <main id="view" aria-live="polite"></main>
+<dialog id="dlg" aria-labelledby="dlg-titulo"></dialog>
 <div id="toast" role="status"></div>
 
 <script>
@@ -117,9 +225,43 @@ function aviso(msg) {
   clearTimeout(_t); _t = setTimeout(() => t.classList.remove('on'), 3200);
 }
 
+
+/* dinheiro: "1.500,50" -> 150050 (inteiro, como o backend exige) */
+const cent = v => {
+  v = String(v ?? '').replace(/[R$\s]/g, '');
+  if (!v) return null;
+  if (v.includes(',')) v = v.replace(/\./g, '').replace(',', '.');
+  const n = parseFloat(v);
+  return isNaN(n) || n < 0 ? null : Math.round(n * 100);
+};
+const val = id => ($('#' + id)?.value ?? '').trim();
+const dataBR = s => s ? new Date(s.length > 10 ? s : s + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
+const campo = (id, rotulo, valor, extra = '') => `<div><label for="${id}">${rotulo}</label><input id="${id}" value="${esc(valor)}" ${extra}></div>`;
+const opcoes = (lista, atual) => lista.map(([v, t]) => `<option value="${esc(v)}" ${String(v) === String(atual ?? '') ? 'selected' : ''}>${esc(t)}</option>`).join('');
+
+let _srv = null;
+async function servicos() { if (!_srv) _srv = (await api('GET', '/api/servicos')).servicos.filter(s => s.ativo); return _srv; }
+const opcoesSrv = (srv, atual) => '<option value="">Sem serviço</option>' + srv.map(s => `<option value="${s.id}" ${String(s.id) === String(atual ?? '') ? 'selected' : ''}>${esc(s.nome)}</option>`).join('');
+
+/* janela (dialog) */
+function abrir(titulo, html, ctx = {}) {
+  const d = $('#dlg');
+  Object.keys(d.dataset).forEach(k => delete d.dataset[k]);
+  Object.assign(d.dataset, ctx);
+  d.innerHTML = `<div class="dlg-in"><div class="dlg-topo"><h2 id="dlg-titulo">${esc(titulo)}</h2>
+    <button class="x" data-act="fechar" aria-label="Fechar">×</button></div>${html}</div>`;
+  if (!d.open) d.showModal();
+}
+function fechar() { const d = $('#dlg'); if (d.open) d.close(); }
+$('#dlg').addEventListener('click', e => { if (e.target === e.currentTarget) fechar(); });
+
 /* ---------- peças ---------- */
 const chipLead = s => `<span class="chip ${s==='fechado'?'ok':s==='perdido'?'er':''}">${esc(STATUS[s]||s)}</span>`;
 const chipCom = s => { const [t, c] = COM_STATUS[s] || [s, '']; return `<span class="chip ${c}">${t}</span>`; };
+const PROJ = {a_iniciar:['A iniciar','av'], andamento:['Em andamento',''], entregue:['Entregue','ok']};
+const chipProj = s => `<span class="chip ${(PROJ[s] || [0, ''])[1]}">${(PROJ[s] || [s])[0]}</span>`;
+const PAG = {pago:'ok', parcial:'av', pendente:'', atrasado:'er'};
+const chipPag = s => `<span class="chip ${PAG[s] ?? ''}">${esc(s)}</span>`;
 const vazio = t => `<p class="vazio">${t}</p>`;
 const seletorEquipe = () => EU.admin ? `<div class="seg" role="group" aria-label="Escopo">
   <button data-act="escopo" data-v="0" class="${equipe?'':'on'}">Meus</button>
@@ -154,15 +296,21 @@ const VIEWS = {
   },
 
   async prospeccao(el) {
-    const me = (await api('GET', '/api/me')).usuario;
+    const [me, bs] = await Promise.all([api('GET', '/api/me'), api('GET', '/api/prospeccao')]);
     el.innerHTML = `<h1>Prospecção</h1>
       <p class="sub">Encontre empresas por segmento e cidade. Os resultados são potenciais, não contatos validados.</p>
       <section class="card">
         <div class="form">
           <div><label for="q">Segmento ou palavra-chave</label><input id="q" placeholder="Clínicas odontológicas"></div>
           <div><label for="cid">Cidade ou região</label><input id="cid" placeholder="São Paulo"></div></div>
-        <p style="margin:14px 0 0"><button class="btn" disabled>Buscar</button></p>
-        <p class="vazio">${me.serper ? 'Chave Serper cadastrada (' + esc(me.serper) + ').' : 'Você ainda não tem chave Serper. Cadastre em Perfil.'} A busca será ativada quando a rota <code>/api/prospeccao</code> existir no backend.</p>
+        <p style="margin:14px 0 0"><button class="btn" data-act="buscar" ${me.serper ? '' : 'disabled'}>Buscar</button></p>
+        ${me.serper ? `<p class="vazio">Chave Serper cadastrada (${esc(me.serper)}). Limite de 30 buscas por hora.</p>`
+          : `<p class="vazio">Você ainda não tem chave Serper. Cadastre em <a href="#perfil">${EU.admin ? 'Gestão' : 'Perfil'}</a>.</p>`}
+      </section>
+      <section class="card" id="res" style="margin-top:14px" hidden></section>
+      <section class="card" style="margin-top:14px"><h2>Buscas recentes</h2>
+        ${bs.buscas.map(b => `<div class="linha"><div>${esc(b.consulta)}<small>${esc(b.cidade || 'Sem cidade')} · ${dataBR(b.em)}</small></div>
+          <button class="btn peq sec" data-act="abrir-busca" data-id="${b.id}">Abrir</button></div>`).join('') || vazio('Suas buscas aparecem aqui.')}
       </section>`;
   },
 
@@ -171,9 +319,10 @@ const VIEWS = {
     const colunas = Object.keys(STATUS).map(s => {
       const itens = l.leads.filter(x => x.status === s);
       return `<div class="col"><h3><span>${STATUS[s]}</span><span class="chip">${itens.length}</span></h3>
-        ${itens.map(x => `<div class="lead">${esc(x.empresa)}<small>${esc(x.contato || '—')} · ${reais(x.valor_estimado_cent)}</small></div>`).join('') || vazio('Vazio')}</div>`;
+        ${itens.map(x => `<button class="lead" data-act="lead" data-id="${x.id}">${esc(x.empresa)}<small>${esc(x.contato || '—')} · ${reais(x.valor_estimado_cent)}</small></button>`).join('') || vazio('Vazio')}</div>`;
     }).join('');
-    el.innerHTML = `<div class="topo"><div><h1>Vendas</h1><p class="sub">Funil e comissões${equipe ? ' da equipe' : ''}.</p></div>${seletorEquipe()}</div>
+    el.innerHTML = `<div class="topo"><div><h1>Vendas</h1><p class="sub">Funil e comissões${equipe ? ' da equipe' : ''}.</p></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">${seletorEquipe()}<button class="btn" data-act="novo-lead">Novo lead</button></div></div>
       <div class="funil" tabindex="0" aria-label="Funil comercial">${colunas}</div>
       <section class="card" style="margin-top:16px"><h2>Comissões</h2>${totaisCom(c.totais)}
         ${c.comissoes.slice(0, 20).map(x => `<div class="linha"><div>Venda #${x.venda_id}<small>${x.pct}% · previsto ${reais(x.previsto_cent)} · liberado ${reais(x.liberado_cent)}</small></div>${chipCom(x.status)}</div>`).join('')}
@@ -181,15 +330,44 @@ const VIEWS = {
   },
 
   async operacao(el) {
-    el.innerHTML = `<h1>Operação</h1><p class="sub">Clientes conquistados, contratos, pagamentos e entregas.</p>
-      <section class="card">${vazio('Esta página será ligada quando o backend tiver as rotas de clientes e projetos.')}</section>`;
+    const q = equipe ? '?equipe=1' : '';
+    const [c, p] = await Promise.all([api('GET', '/api/clientes' + q), api('GET', '/api/projetos' + q)]);
+    el.innerHTML = `<div class="topo"><div><h1>Operação</h1><p class="sub">Clientes conquistados, contratos, pagamentos e entregas.</p></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">${seletorEquipe()}<button class="btn" data-act="novo-cliente">Novo cliente</button></div></div>
+      <div class="grid dois">
+      <section class="card"><h2>Clientes (${c.clientes.length})</h2>
+        ${c.clientes.map(x => `<div class="linha"><button class="clic" data-act="cliente" data-id="${x.id}"><span>${esc(x.empresa)}<small>${esc(x.contato || x.email || '—')}</small></span><span class="chip">Abrir</span></button></div>`).join('')
+          || vazio('Clientes aparecem quando você fecha um lead ou cadastra um novo.')}
+      </section>
+      <section class="card"><h2>Projetos (${p.projetos.length})</h2>
+        ${p.projetos.map(x => `<div class="linha"><button class="clic" data-act="projeto" data-id="${x.id}"><span>${esc(x.nome)}<small>${esc(x.cliente)} · prazo ${dataBR(x.prazo)} · ${x.horas}h</small></span>${chipProj(x.status)}</button></div>`).join('')
+          || vazio('Os projetos são criados quando uma venda é registrada.')}
+      </section></div>`;
   },
 
   async financeiro(el) {
-    const [c, cfg] = await Promise.all([api('GET', '/api/comissoes?equipe=1'), api('GET', '/api/admin/config')]);
+    const mes = el.dataset.mes || new Date().toISOString().slice(0, 7);
+    el.dataset.mes = mes;
+    const [f, c, cfg, pg, cu] = await Promise.all([api('GET', '/api/admin/financeiro?mes=' + mes), api('GET', '/api/comissoes?equipe=1'),
+      api('GET', '/api/admin/config'), api('GET', '/api/admin/pagamentos?mes=' + mes), api('GET', '/api/admin/custos')]);
     const k = cfg.config;
-    el.innerHTML = `<h1>Financeiro</h1><p class="sub">Comissões da equipe e regras de percentual.</p>
-      <div class="grid dois">
+    el.innerHTML = `<div class="topo"><div><h1>Financeiro</h1><p class="sub">Caixa, pagamentos, custos e comissões.</p></div>
+        <div><label for="f-mes" style="margin-top:0">Mês</label><input id="f-mes" class="mes" type="month" value="${mes}"></div></div>
+      <section class="card"><div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr))">
+        <div><small>Recebido</small><span class="num">${reais(f.recebido_cent)}</span></div>
+        <div><small>A receber</small><span class="num">${reais(f.a_receber_cent)}</span></div>
+        <div><small>Atrasado</small><span class="num">${reais(f.atrasado_cent)}</span></div>
+        <div><small>Custos</small><span class="num">${reais(f.custos_cent)}</span></div>
+        <div><small>Comissões</small><span class="num">${reais(f.comissoes_cent)}</span></div>
+        <div><small>MRR</small><span class="num">${reais(f.mrr_cent)}</span></div>
+        <div><small>Lucro do mês</small><span class="num">${reais(f.lucro_cent)}</span></div></div></section>
+      <section class="card" style="margin-top:14px"><h2>Pagamentos do mês</h2>
+        ${pg.pagamentos.map(x => `<div class="linha"><div>${esc(x.cliente)} · ${x.tipo === 'setup' ? 'Setup' : 'Mensalidade'}${x.competencia ? ' ' + esc(x.competencia) : ''}
+          <small>Vence ${dataBR(x.vence_em)} · ${reais(x.valor_cent)} · recebido ${reais(x.recebido_cent)} · ${esc(x.vendedor)}</small></div>
+          <div>${chipPag(x.status)} ${x.status !== 'pago' ? `<button class="btn peq" data-act="receber" data-id="${x.id}" data-resta="${x.valor_cent - x.recebido_cent}">Receber</button>` : ''}</div></div>`).join('')
+          || vazio('Nenhum pagamento com vencimento neste mês.')}
+      </section>
+      <div class="grid dois" style="margin-top:14px">
       <section class="card"><h2>Percentual padrão</h2>
         <p class="vazio" style="margin-top:-6px">Vale para quem não tem percentual próprio. Vendas antigas não mudam.</p>
         <div class="form">
@@ -197,10 +375,23 @@ const VIEWS = {
           <div><label for="p-mensal">Mensalidade (%)</label><input id="p-mensal" inputmode="decimal" value="${k.comissao_mensal_pct}"></div></div>
         <p style="margin:14px 0 0"><button class="btn" data-act="salvar-cfg">Salvar percentuais</button></p></section>
       <section class="card"><h2>Comissões da equipe</h2>${totaisCom(c.totais)}</section></div>
+      <section class="card" style="margin-top:14px"><h2>Custos</h2>
+        <div class="form">
+          <div><label for="c-tipo">Tipo</label><select id="c-tipo"><option value="fixo">Fixo</option><option value="variavel">Variável</option></select></div>
+          <div>${''}<label for="c-rec">Recorrência</label><select id="c-rec"><option value="mensal">Mensal</option><option value="anual">Anual</option><option value="unica">Única</option></select></div>
+          ${campo('c-cat', 'Categoria', '', 'placeholder="Hospedagem"')}
+          ${campo('c-valor', 'Valor (R$)', '', 'inputmode="decimal" placeholder="150,00"')}
+          ${campo('c-desc', 'Descrição', '')}
+          <div><label for="c-data">Data</label><input id="c-data" type="date" value="${new Date().toISOString().slice(0, 10)}"></div></div>
+        <p style="margin:14px 0 6px"><button class="btn" data-act="add-custo">Adicionar custo</button></p>
+        ${cu.custos.map(x => `<div class="linha"><div>${esc(x.categoria)}${x.descricao ? ' · ' + esc(x.descricao) : ''}<small>${esc(x.tipo)} · ${esc(x.recorrencia)} · ${dataBR(x.data)}</small></div>
+          <div>${reais(x.valor_cent)} <button class="btn peq perigo" data-act="del-custo" data-id="${x.id}">Apagar</button></div></div>`).join('') || vazio('Nenhum custo lançado.')}
+      </section>
       <section class="card" style="margin-top:14px"><h2>Repasses</h2>
         ${c.comissoes.map(x => `<div class="linha"><div>Venda #${x.venda_id} · vendedor #${x.vendedor_id}<small>${x.pct}% · liberado ${reais(x.liberado_cent)} · pago ${reais(x.pago_cent)}</small></div>
           <div>${chipCom(x.status)} ${x.a_pagar_cent > 0 ? `<button class="btn peq" data-act="pagar" data-id="${x.id}">Pagar ${reais(x.a_pagar_cent)}</button>` : ''}</div></div>`).join('') || vazio('Nenhuma comissão ainda.')}
       </section>`;
+    $('#f-mes').onchange = e => { el.dataset.mes = e.target.value || mes; rota(); };
   },
 
   async perfil(el) {
@@ -240,8 +431,246 @@ const VIEWS = {
   }
 };
 
+
+/* ---------- prospecção: resultados ---------- */
+let buscaAtual = null;
+function pintarBusca(id, titulo, rs) {
+  buscaAtual = id;
+  const box = $('#res'); box.hidden = false;
+  box.innerHTML = `<h2>${esc(titulo)}</h2>` + (rs.map(r => `<div class="linha"><div>${esc(r.titulo)}
+      <small>${esc([r.telefone, r.site, r.endereco].filter(Boolean).join(' · ') || 'Sem dados de contato')}</small></div>
+      <div>${r.status === 'novo' ? `<button class="btn peq" data-act="importar" data-id="${r.id}">Virar lead</button>
+          <button class="btn peq sec" data-act="descartar" data-id="${r.id}">Descartar</button>`
+        : `<span class="chip ${r.status === 'importado' ? 'ok' : ''}">${r.status === 'importado' ? 'Lead criado' : 'Descartado'}</span>`}</div></div>`).join('')
+    || vazio('Nenhum resultado para essa busca.'));
+  box.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+}
+async function recarregarBusca() {
+  if (!buscaAtual) return;
+  const r = await api('GET', '/api/prospeccao/' + buscaAtual);
+  pintarBusca(r.busca.id, r.busca.consulta + (r.busca.cidade ? ' · ' + r.busca.cidade : ''), r.resultados);
+}
+
+/* ---------- lead ---------- */
+async function abrirLead(id) {
+  const [d, srv] = await Promise.all([api('GET', '/api/leads/' + id), servicos()]);
+  const l = d.lead, fechado = l.status === 'fechado';
+  const sts = fechado ? [['fechado', STATUS.fechado]] : Object.entries(STATUS).filter(([k]) => k !== 'fechado');
+  const wa = (l.whatsapp || l.telefone || '').replace(/\D/g, '');
+  abrir(l.empresa, `
+    <p class="sub" style="margin-bottom:10px">${chipLead(l.status)} ${wa ? `<a href="https://wa.me/${wa.length <= 11 ? '55' + wa : wa}" target="_blank" rel="noopener">Abrir WhatsApp</a>` : ''}</p>
+    <div class="form">
+      ${campo('l-empresa', 'Empresa', l.empresa)}${campo('l-contato', 'Contato', l.contato)}${campo('l-telefone', 'Telefone', l.telefone)}
+      ${campo('l-whatsapp', 'WhatsApp', l.whatsapp)}${campo('l-email', 'E-mail', l.email, 'type="email"')}${campo('l-site', 'Site', l.site)}
+      ${campo('l-segmento', 'Segmento', l.segmento)}${campo('l-cidade', 'Cidade', l.cidade)}
+      ${campo('l-valor', 'Valor estimado (R$)', ((l.valor_estimado_cent || 0) / 100).toFixed(2).replace('.', ','), 'inputmode="decimal"')}
+      <div><label for="l-srv">Serviço</label><select id="l-srv">${opcoesSrv(srv, l.servico_id)}</select></div>
+      <div><label for="l-status">Etapa</label><select id="l-status" ${fechado ? 'disabled' : ''}>${opcoes(sts, l.status)}</select></div>
+      ${campo('l-motivo', 'Motivo (obrigatório se perdido)', l.motivo_perda || '')}</div>
+    <div class="acoes"><button class="btn" data-act="salvar-lead">Salvar</button></div>
+
+    <div class="sep"><h3>Mensagem com IA</h3>
+      <div class="form"><div><label for="l-canal">Canal</label><select id="l-canal"><option value="whatsapp">WhatsApp</option><option value="email">E-mail</option></select></div></div>
+      <p style="margin:10px 0 0"><button class="btn peq sec" data-act="ia-msg">Gerar mensagem</button></p>
+      <div id="l-ia-box" hidden><label for="l-ia">Edite antes de enviar</label><textarea id="l-ia"></textarea>
+        <p style="margin:8px 0 0"><button class="btn peq sec" data-act="copiar-ia">Copiar</button></p></div></div>
+
+    <div class="sep"><h3>Propostas</h3>
+      ${d.propostas.map(p => `<div class="linha"><div>Proposta #${p.id}<small>Setup ${reais(p.setup_cent)} · mensal ${reais(p.mensal_cent)}</small></div>
+        <div>${chipPag(p.status === 'aceita' ? 'pago' : p.status === 'recusada' ? 'atrasado' : 'pendente').replace(/>[^<]*</, '>' + esc(p.status) + '<')}
+          ${p.tem_pdf ? `<a class="btn peq sec" href="/api/propostas/${p.id}/pdf" target="_blank" rel="noopener">PDF</a>` : ''}
+          ${p.status === 'gerada' || p.status === 'rascunho' ? `<button class="btn peq sec" data-act="status-proposta" data-st="enviada" data-id="${p.id}">Marcar enviada</button>` : ''}
+          ${['aceita', 'recusada'].includes(p.status) ? '' : `<button class="btn peq sec" data-act="status-proposta" data-st="recusada" data-id="${p.id}">Recusada</button>`}</div></div>`).join('') || vazio('Nenhuma proposta ainda.')}
+      ${fechado ? '' : `<div class="form">${campo('pr-setup', 'Setup (R$) — vazio usa o do serviço', '', 'inputmode="decimal"')}${campo('pr-mensal', 'Mensalidade (R$)', '', 'inputmode="decimal"')}
+        <div><label for="pr-validade">Validade</label><input id="pr-validade" type="date"></div>${campo('pr-cond', 'Condições', '')}</div>
+        <p style="margin:10px 0 0"><button class="btn peq" data-act="gerar-proposta">Gerar proposta (PDF)</button></p>`}</div>
+
+    ${fechado ? '' : `<div class="sep"><h3>Fechar venda</h3>
+      <div class="form">${campo('fv-setup', 'Setup (R$)', '', 'inputmode="decimal"')}${campo('fv-mensal', 'Mensalidade (R$)', '', 'inputmode="decimal"')}
+        <div><label for="fv-prop">Proposta</label><select id="fv-prop"><option value="">Sem proposta</option>${d.propostas.map(p => `<option value="${p.id}">#${p.id} · ${reais(p.setup_cent)} + ${reais(p.mensal_cent)}/mês</option>`).join('')}</select></div>
+        <div><label for="fv-setup-vence">Vencimento do setup</label><input id="fv-setup-vence" type="date"></div>
+        <div><label for="fv-mensal-inicio">Início da mensalidade</label><input id="fv-mensal-inicio" type="date"></div></div>
+      <p style="margin:10px 0 0"><button class="btn" data-act="fechar-venda">Fechar venda</button></p></div>`}
+
+    <div class="sep"><h3>Histórico</h3>
+      <div class="form"><div><label for="l-nota-tipo">Tipo</label><select id="l-nota-tipo"><option value="nota">Nota</option><option value="contato">Contato feito</option></select></div>${campo('l-nota', 'Anotação', '')}</div>
+      <p style="margin:10px 0 8px"><button class="btn peq sec" data-act="nota-lead">Adicionar</button></p>
+      ${d.historico.map(h => `<div class="hist"><b>${h.tipo === 'status' ? esc((STATUS[h.de] || '—') + ' → ' + (STATUS[h.para] || '')) : esc(h.tipo)}</b> · ${dataBR(h.em)}${h.texto ? '<br>' + esc(h.texto) : ''}</div>`).join('')}</div>`,
+    {id: l.id, versao: l.versao, status: l.status});
+}
+
+/* ---------- cliente ---------- */
+async function abrirCliente(id) {
+  const [d, srv] = await Promise.all([api('GET', '/api/clientes/' + id), servicos()]);
+  const c = d.cliente;
+  abrir(c.empresa, `
+    <div class="form">${campo('c-empresa', 'Empresa', c.empresa)}${campo('c-contato', 'Contato', c.contato)}${campo('c-telefone', 'Telefone', c.telefone)}
+      ${campo('c-email', 'E-mail', c.email, 'type="email"')}${campo('c-site', 'Site', c.site)}${campo('c-doc', 'CNPJ/CPF', c.documento)}
+      ${campo('c-end', 'Endereço', c.endereco)}${campo('c-obs', 'Observações', c.observacoes)}</div>
+    <div class="acoes"><button class="btn" data-act="salvar-cliente">Salvar</button></div>
+
+    <div class="sep"><h3>Vendas</h3>
+      ${d.vendas.map(v => `<div class="linha"><div>Venda #${v.id}<small>Setup ${reais(v.setup_cent)} · mensal ${reais(v.mensal_cent)} · ${dataBR(v.fechada_em)}</small></div>
+        <div>${v.mensal_cent > 0 ? `<span class="chip ${v.mensal_ativa ? 'ok' : 'er'}">${v.mensal_ativa ? 'Mensal ativa' : 'Mensal cancelada'}</span>` : ''}
+        ${EU.admin && v.mensal_ativa && v.mensal_cent > 0 ? `<button class="btn peq perigo" data-act="cancelar-mensal" data-id="${v.id}">Cancelar mensal</button>` : ''}</div></div>`).join('') || vazio('Nenhuma venda registrada.')}
+      <div class="form">${campo('v-setup', 'Setup (R$)', '', 'inputmode="decimal"')}${campo('v-mensal', 'Mensalidade (R$)', '', 'inputmode="decimal"')}
+        <div><label for="v-srv">Serviço</label><select id="v-srv">${opcoesSrv(srv, '')}</select></div>
+        <div><label for="v-setup-vence">Vencimento do setup</label><input id="v-setup-vence" type="date"></div>
+        <div><label for="v-mensal-inicio">Início da mensalidade</label><input id="v-mensal-inicio" type="date"></div></div>
+      <p style="margin:10px 0 0"><button class="btn peq" data-act="registrar-venda">Registrar venda</button></p></div>
+
+    <div class="sep"><h3>Projetos</h3>
+      ${d.projetos.map(p => `<div class="linha"><button class="clic" data-act="projeto" data-id="${p.id}"><span>${esc(p.nome)}<small>Prazo ${dataBR(p.prazo)} · ${p.horas}h</small></span>${chipProj(p.status)}</button></div>`).join('') || vazio('Sem projetos.')}</div>`,
+    {id: c.id});
+}
+
+/* ---------- projeto ---------- */
+async function abrirProjeto(id) {
+  const d = await api('GET', '/api/projetos'.concat(equipe ? '?equipe=1' : ''));
+  const p = d.projetos.find(x => String(x.id) === String(id));
+  if (!p) return aviso('Projeto não encontrado.');
+  abrir(p.nome, `
+    <p class="sub" style="margin-bottom:6px">${esc(p.cliente)} · ${p.horas}h lançadas${EU.admin || true ? ' · mão de obra ' + reais(p.custo_mao_obra_cent) : ''}</p>
+    <div class="form">${campo('p-nome', 'Nome', p.nome)}
+      <div><label for="p-status">Status</label><select id="p-status">${opcoes([['a_iniciar', 'A iniciar'], ['andamento', 'Em andamento'], ['entregue', 'Entregue']], p.status)}</select></div>
+      <div><label for="p-prazo">Prazo</label><input id="p-prazo" type="date" value="${esc(p.prazo ? p.prazo.slice(0, 10) : '')}"></div>
+      ${campo('p-custo', 'Custo da hora (R$)', ((p.custo_hora_cent || 0) / 100).toFixed(2).replace('.', ','), 'inputmode="decimal"')}
+      ${campo('p-obs', 'Observações', p.observacoes)}</div>
+    <div class="acoes"><button class="btn" data-act="salvar-projeto">Salvar</button></div>
+    <div class="sep"><h3>Lançar horas</h3>
+      <div class="form">${campo('h-horas', 'Horas', '', 'inputmode="decimal" placeholder="2,5"')}
+        <div><label for="h-data">Data</label><input id="h-data" type="date" value="${new Date().toISOString().slice(0, 10)}"></div>${campo('h-desc', 'O que foi feito', '')}</div>
+      <p style="margin:10px 0 0"><button class="btn peq sec" data-act="lancar-horas">Lançar</button></p></div>`, {id: p.id});
+}
+
 /* ---------- ações ---------- */
 const ACOES = {
+
+  /* --- prospecção --- */
+  async buscar() {
+    const consulta = val('q'); if (!consulta) return aviso('Informe o segmento.');
+    const r = await api('POST', '/api/prospeccao', {consulta, cidade: val('cid')});
+    pintarBusca(r.busca_id, consulta + (val('cid') ? ' · ' + val('cid') : ''), r.resultados);
+  },
+  async 'abrir-busca'(b) { const r = await api('GET', '/api/prospeccao/' + b.dataset.id); pintarBusca(r.busca.id, r.busca.consulta + (r.busca.cidade ? ' · ' + r.busca.cidade : ''), r.resultados); },
+  async importar(b) { await api('POST', `/api/prospeccao/resultados/${b.dataset.id}/importar`, {}); aviso('Lead criado. Veja em Vendas.'); return recarregarBusca(); },
+  async descartar(b) { await api('POST', `/api/prospeccao/resultados/${b.dataset.id}/descartar`, {}); return recarregarBusca(); },
+
+  /* --- leads --- */
+  fechar: () => fechar(),
+  'novo-lead'() {
+    abrir('Novo lead', `<div class="form">${campo('l-empresa', 'Empresa', '')}${campo('l-contato', 'Contato', '')}${campo('l-telefone', 'Telefone', '')}
+      ${campo('l-whatsapp', 'WhatsApp', '')}${campo('l-email', 'E-mail', '', 'type="email"')}${campo('l-site', 'Site', '')}
+      ${campo('l-segmento', 'Segmento', '')}${campo('l-cidade', 'Cidade', '')}${campo('l-valor', 'Valor estimado (R$)', '', 'inputmode="decimal"')}</div>
+      <div class="acoes"><button class="btn" data-act="criar-lead">Criar lead</button></div>`);
+  },
+  async 'criar-lead'() {
+    await api('POST', '/api/leads', {origem: 'manual', empresa: val('l-empresa'), contato: val('l-contato'), telefone: val('l-telefone'), whatsapp: val('l-whatsapp'),
+      email: val('l-email'), site: val('l-site'), segmento: val('l-segmento'), cidade: val('l-cidade'), valor_estimado_cent: cent(val('l-valor')) || 0});
+    fechar(); aviso('Lead criado.'); return rota();
+  },
+  async lead(b) { return abrirLead(b.dataset.id); },
+  async 'salvar-lead'() {
+    const id = $('#dlg').dataset.id, d = {empresa: val('l-empresa'), contato: val('l-contato'), telefone: val('l-telefone'), whatsapp: val('l-whatsapp'),
+      email: val('l-email'), site: val('l-site'), segmento: val('l-segmento'), cidade: val('l-cidade'),
+      valor_estimado_cent: cent(val('l-valor')) || 0, servico_id: val('l-srv') ? Number(val('l-srv')) : null, versao: Number($('#dlg').dataset.versao)};
+    if (!$('#l-status').disabled && val('l-status') !== $('#dlg').dataset.status) { d.status = val('l-status'); d.motivo_perda = val('l-motivo'); }
+    await api('PUT', '/api/leads/' + id, d); aviso('Lead salvo.'); await rota(); return abrirLead(id);
+  },
+  async 'nota-lead'() {
+    const t = val('l-nota'); if (!t) return aviso('Escreva a nota.');
+    await api('POST', `/api/leads/${$('#dlg').dataset.id}/nota`, {texto: t, tipo: $('#l-nota-tipo').value}); return abrirLead($('#dlg').dataset.id);
+  },
+  async 'ia-msg'() {
+    const r = await api('POST', '/api/ia/mensagem', {lead_id: Number($('#dlg').dataset.id), canal: val('l-canal')});
+    $('#l-ia').value = r.texto; $('#l-ia-box').hidden = false;
+  },
+  async 'copiar-ia'() { await navigator.clipboard.writeText($('#l-ia').value); aviso('Mensagem copiada.'); },
+  async 'gerar-proposta'() {
+    const d = {lead_id: Number($('#dlg').dataset.id)}, s = cent(val('pr-setup')), m = cent(val('pr-mensal'));
+    if (val('l-srv')) d.servico_id = Number(val('l-srv'));
+    if (s !== null) d.setup_cent = s; if (m !== null) d.mensal_cent = m;
+    if (val('pr-validade')) d.validade = val('pr-validade');
+    if (val('pr-cond')) d.condicoes = val('pr-cond');
+    await api('POST', '/api/propostas', d); aviso('Proposta gerada.'); await rota(); return abrirLead(d.lead_id);
+  },
+  async 'status-proposta'(b) { await api('PUT', '/api/propostas/' + b.dataset.id, {status: b.dataset.st}); return abrirLead($('#dlg').dataset.id); },
+  async 'fechar-venda'() {
+    const s = cent(val('fv-setup')) || 0, m = cent(val('fv-mensal')) || 0;
+    if (s + m <= 0) return aviso('Informe o setup e/ou a mensalidade.');
+    const d = {setup_cent: s, mensal_cent: m};
+    if (val('l-srv')) d.servico_id = Number(val('l-srv'));
+    if (val('fv-prop')) d.proposta_id = Number(val('fv-prop'));
+    if (val('fv-setup-vence')) d.setup_vence = val('fv-setup-vence');
+    if (val('fv-mensal-inicio')) d.mensal_inicio = val('fv-mensal-inicio');
+    const r = await api('POST', `/api/leads/${$('#dlg').dataset.id}/fechar`, d);
+    fechar(); aviso('Venda fechada! Cliente e projeto criados.'); location.hash = '#operacao'; return rota();
+  },
+
+  /* --- clientes e projetos --- */
+  'novo-cliente'() {
+    abrir('Novo cliente', `<div class="form">${campo('c-empresa', 'Empresa', '')}${campo('c-contato', 'Contato', '')}${campo('c-telefone', 'Telefone', '')}
+      ${campo('c-email', 'E-mail', '', 'type="email"')}${campo('c-site', 'Site', '')}${campo('c-doc', 'CNPJ/CPF', '')}</div>
+      <div class="acoes"><button class="btn" data-act="criar-cliente">Criar cliente</button></div>`);
+  },
+  async 'criar-cliente'() {
+    await api('POST', '/api/clientes', {empresa: val('c-empresa'), contato: val('c-contato'), telefone: val('c-telefone'), email: val('c-email'), site: val('c-site'), documento: val('c-doc')});
+    fechar(); aviso('Cliente criado.'); return rota();
+  },
+  async cliente(b) { return abrirCliente(b.dataset.id); },
+  async 'salvar-cliente'() {
+    const id = $('#dlg').dataset.id;
+    await api('PUT', '/api/clientes/' + id, {empresa: val('c-empresa'), contato: val('c-contato'), telefone: val('c-telefone'), email: val('c-email'),
+      site: val('c-site'), documento: val('c-doc'), endereco: val('c-end'), observacoes: val('c-obs')});
+    aviso('Cliente salvo.'); await rota(); return abrirCliente(id);
+  },
+  async 'registrar-venda'() {
+    const s = cent(val('v-setup')) || 0, m = cent(val('v-mensal')) || 0;
+    if (s + m <= 0) return aviso('Informe o setup e/ou a mensalidade.');
+    const d = {setup_cent: s, mensal_cent: m};
+    if (val('v-srv')) d.servico_id = Number(val('v-srv'));
+    if (val('v-setup-vence')) d.setup_vence = val('v-setup-vence');
+    if (val('v-mensal-inicio')) d.mensal_inicio = val('v-mensal-inicio');
+    const id = $('#dlg').dataset.id;
+    await api('POST', `/api/clientes/${id}/venda`, d); aviso('Venda registrada.'); await rota(); return abrirCliente(id);
+  },
+  async 'cancelar-mensal'(b) {
+    if (!confirm('Cancelar a mensalidade desta venda? As parcelas futuras serão removidas.')) return;
+    const r = await api('POST', `/api/admin/vendas/${b.dataset.id}/cancelar-mensal`, {});
+    aviso(r.mensalidades_removidas + ' parcela(s) removida(s).'); return abrirCliente($('#dlg').dataset.id);
+  },
+  async projeto(b) { return abrirProjeto(b.dataset.id); },
+  async 'salvar-projeto'() {
+    const id = $('#dlg').dataset.id;
+    await api('PUT', '/api/projetos/' + id, {nome: val('p-nome'), status: val('p-status'), prazo: val('p-prazo') || null,
+      custo_hora_cent: cent(val('p-custo')) || 0, observacoes: val('p-obs')});
+    aviso('Projeto salvo.'); await rota(); return abrirProjeto(id);
+  },
+  async 'lancar-horas'() {
+    const h = Number(val('h-horas').replace(',', '.'));
+    if (!(h > 0 && h <= 24)) return aviso('Horas deve ser entre 0 e 24.');
+    const id = $('#dlg').dataset.id;
+    await api('POST', `/api/projetos/${id}/horas`, {horas: h, data: val('h-data') || undefined, descricao: val('h-desc')});
+    aviso('Horas lançadas.'); await rota(); return abrirProjeto(id);
+  },
+
+  /* --- financeiro --- */
+  receber(b) {
+    abrir('Receber pagamento', `<div class="form">${campo('r-valor', 'Valor recebido (R$)', (b.dataset.resta / 100).toFixed(2).replace('.', ','), 'inputmode="decimal"')}
+      <div><label for="r-data">Data</label><input id="r-data" type="date" value="${new Date().toISOString().slice(0, 10)}"></div></div>
+      <div class="acoes"><button class="btn" data-act="confirmar-receber" data-id="${b.dataset.id}">Confirmar</button></div>`);
+  },
+  async 'confirmar-receber'(b) {
+    const v = cent(val('r-valor')); if (!v) return aviso('Informe o valor.');
+    await api('POST', `/api/admin/pagamentos/${b.dataset.id}/receber`, {valor_recebido_cent: v, data: val('r-data') || undefined});
+    fechar(); aviso('Pagamento registrado.'); return rota();
+  },
+  async 'add-custo'() {
+    const v = cent(val('c-valor')); if (v === null) return aviso('Informe o valor.');
+    await api('POST', '/api/admin/custos', {tipo: val('c-tipo'), recorrencia: val('c-rec'), categoria: val('c-cat'), descricao: val('c-desc'), valor_cent: v, data: val('c-data')});
+    aviso('Custo lançado.'); return rota();
+  },
+  async 'del-custo'(b) { if (!confirm('Apagar este custo?')) return; await api('DELETE', '/api/admin/custos/' + b.dataset.id); return rota(); },
   escopo: b => { equipe = b.dataset.v === '1'; return rota(); },
   async 'salvar-cfg'() {
     await api('PUT', '/api/admin/config', {comissao_setup_pct: num($('#p-setup').value), comissao_mensal_pct: num($('#p-mensal').value)});
@@ -294,7 +723,7 @@ document.addEventListener('click', async e => {
 /* ---------- rota ---------- */
 function desenharMenu() {
   const atual = (location.hash || '#inicio').slice(1);
-  $('#menu').innerHTML = '<div class="logo"></div>' + PAGINAS.map(([id, nome]) =>
+  $('#menu').innerHTML = '<a class="logo-link" href="#inicio" aria-label="Leanttro — Início"><img class="logo" src="https://res.cloudinary.com/dhu1cqvrb/image/upload/f_auto,q_auto,h_80/v1779207400/leanttro_bohuce.png" alt="Leanttro"></a>' + PAGINAS.map(([id, nome]) =>
     `<a href="#${id}" class="${id === atual ? 'on' : ''}" ${id === atual ? 'aria-current="page"' : ''}><svg><use href="#i-${id}"/></svg>${nome}</a>`).join('');
 }
 async function rota() {
@@ -305,7 +734,7 @@ async function rota() {
   try { await VIEWS[id](el); }
   catch (err) { el.innerHTML = `<section class="card"><h2>Não foi possível carregar</h2><p class="vazio">${esc(err.message)}</p><button class="btn" data-act="escopo" data-v="${equipe?1:0}">Tentar de novo</button></section>`; }
 }
-addEventListener('hashchange', () => { rota(); window.scrollTo(0, 0); });
+addEventListener('hashchange', () => { fechar(); rota(); window.scrollTo(0, 0); });
 rota();
 </script>
 </body>
