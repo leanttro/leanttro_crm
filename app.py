@@ -547,6 +547,23 @@ class RegistroHistorico(db.Model):
     criado_em = db.Column(db.DateTime, nullable=False, default=agora)
 
 
+class Produto(db.Model):
+    """Catálogo e precificação por conta. Custos e preço são informados por unidade ou por cento."""
+    __tablename__ = "produtos"
+    id = db.Column(db.Integer, primary_key=True)
+    conta_id = db.Column(db.Integer, db.ForeignKey("contas.id"), nullable=False, index=True)
+    owner_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    nome = db.Column(db.String(160), nullable=False)
+    unidade_venda = db.Column(db.String(10), nullable=False, default="unidade")  # unidade | cento
+    custo_fixo_cent = db.Column(db.Integer, nullable=False, default=0)
+    custo_variavel_cent = db.Column(db.Integer, nullable=False, default=0)
+    preco_venda_cent = db.Column(db.Integer, nullable=False, default=0)
+    lucro_pct = db.Column(db.Float, nullable=False, default=100)
+    observacoes = db.Column(db.String(500), nullable=False, default="")
+    criado_em = db.Column(db.DateTime, nullable=False, default=agora)
+    atualizado_em = db.Column(db.DateTime, nullable=False, default=agora, onupdate=agora)
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # MIGRAÇÃO SIMPLES (sem Alembic)
 # ═══════════════════════════════════════════════════════════════════════════
@@ -2955,6 +2972,95 @@ def criar_app():
         if p.valor_recebido_cent > 0:
             return _erro("Pagamento com valor recebido não pode ser removido. Zere o recebimento antes.", 409)
         db.session.delete(p)
+        db.session.commit()
+        return jsonify(ok=True)
+
+    # ── produtos e precificação ────────────────────────────────────────────
+    def _n_produto(pid):
+        p = db.session.get(Produto, pid)
+        u = usuario_atual()
+        if not p or p.conta_id != u.conta_id or (not _n_equipe() and p.owner_id != u.id):
+            abort(404)
+        return p
+
+    def _n_prod_json(p):
+        quantidade = 100 if p.unidade_venda == "cento" else 1
+        custo_total = p.custo_fixo_cent + p.custo_variavel_cent
+        custo_unit = round(custo_total / quantidade)
+        preco_unit = round(p.preco_venda_cent / quantidade)
+        lucro = p.preco_venda_cent - custo_total
+        sugerido = round(custo_total * (1 + p.lucro_pct / 100))
+        return dict(id=p.id, nome=p.nome, unidade_venda=p.unidade_venda,
+                    custo_fixo_cent=p.custo_fixo_cent, custo_variavel_cent=p.custo_variavel_cent,
+                    custo_total_cent=custo_total, custo_unit_cent=custo_unit,
+                    preco_venda_cent=p.preco_venda_cent, preco_unit_cent=preco_unit,
+                    lucro_cent=lucro, lucro_pct=p.lucro_pct, preco_sugerido_cent=sugerido,
+                    observacoes=p.observacoes, criado_em=_fmt(p.criado_em))
+
+    def _n_prod_preencher(p, d, novo=False):
+        nome = _txt(d, "nome", 160, novo or "nome" in d, "Nome")
+        if nome:
+            p.nome = nome
+        unidade = d.get("unidade_venda", p.unidade_venda or "unidade")
+        if unidade not in ("unidade", "cento"):
+            raise ValueError("Escolha vender por unidade ou por cento.")
+        p.unidade_venda = unidade
+        for campo, chave in (("custo_fixo_cent", "custo_fixo_cent"),
+                             ("custo_variavel_cent", "custo_variavel_cent"),
+                             ("preco_venda_cent", "preco_venda_cent")):
+            if chave in d:
+                setattr(p, campo, _centavos(d[chave], "Valor"))
+        if "lucro_pct" in d:
+            pct = float(d["lucro_pct"])
+            if not math.isfinite(pct) or pct < 0 or pct > 10000:
+                raise ValueError("O percentual de lucro deve ficar entre 0 e 10.000%.")
+            p.lucro_pct = pct
+        if "observacoes" in d:
+            p.observacoes = _txt(d, "observacoes", 500) or ""
+
+    @app.get("/api/n/produtos")
+    @login_obrigatorio
+    def n_produtos():
+        stmt = select(Produto).where(Produto.conta_id == usuario_atual().conta_id)
+        if not _n_equipe():
+            stmt = stmt.where(Produto.owner_id == usuario_atual().id)
+        q = (request.args.get("q") or "").strip()[:80]
+        if q:
+            stmt = stmt.where(Produto.nome.icontains(q, autoescape=True))
+        produtos = db.session.scalars(stmt.order_by(Produto.nome)).all()
+        return jsonify(ok=True, produtos=[_n_prod_json(p) for p in produtos])
+
+    @app.post("/api/n/produtos")
+    @login_obrigatorio
+    def n_produto_criar():
+        d, u = _json(), usuario_atual()
+        try:
+            p = Produto(conta_id=u.conta_id, owner_id=u.id, nome="")
+            _n_prod_preencher(p, d, True)
+            db.session.add(p)
+            db.session.commit()
+        except (ValueError, TypeError) as e:
+            db.session.rollback()
+            return _erro(str(e))
+        return jsonify(ok=True, produto=_n_prod_json(p))
+
+    @app.put("/api/n/produtos/<int:pid>")
+    @login_obrigatorio
+    def n_produto_editar(pid):
+        p, d = _n_produto(pid), _json()
+        try:
+            _n_prod_preencher(p, d)
+            p.atualizado_em = agora()
+            db.session.commit()
+        except (ValueError, TypeError) as e:
+            db.session.rollback()
+            return _erro(str(e))
+        return jsonify(ok=True, produto=_n_prod_json(p))
+
+    @app.delete("/api/n/produtos/<int:pid>")
+    @login_obrigatorio
+    def n_produto_apagar(pid):
+        db.session.delete(_n_produto(pid))
         db.session.commit()
         return jsonify(ok=True)
 
