@@ -6,9 +6,9 @@
   "visibilidade": "equipe",
   "rotulos": {"cliente": "Cliente", "clientes": "Clientes", "atendente": "Atendente"},
   "campos_cliente": [
-    {"chave": "nascimento", "rotulo": "Nascimento", "tipo": "data"},
-    {"chave": "convenio", "rotulo": "Convênio", "tipo": "texto"},
-    {"chave": "como_conheceu", "rotulo": "Como conheceu a ótica", "tipo": "select",
+    {"chave": "nascimento", "rotulo": "Nascimento", "tipo": "data", "portal": true},
+    {"chave": "convenio", "rotulo": "Convênio", "tipo": "texto", "portal": true},
+    {"chave": "como_conheceu", "rotulo": "Como conheceu a ótica", "tipo": "select", "interno": true,
      "opcoes": ["Indicação", "Instagram", "Passou na frente", "Outro"]}
   ],
   "tipos_registro": [
@@ -36,7 +36,7 @@
         {"chave": "oe_eixo", "rotulo": "Eixo", "tipo": "numero", "min": 0, "max": 180, "grupo": "Olho esquerdo (OE)"},
         {"chave": "adicao", "rotulo": "Adição", "tipo": "numero", "min": 0, "max": 5, "passo": 0.25, "grupo": "Perto"},
         {"chave": "dnp", "rotulo": "DNP", "tipo": "texto", "grupo": "Perto", "placeholder": "ex.: 32/31"},
-        {"chave": "obs", "rotulo": "Observações", "tipo": "textolongo"}
+        {"chave": "obs", "rotulo": "Observações", "tipo": "textolongo", "interno": true}
       ],
       "lembretes": [
         {"campo": "validade", "dias_antes": 30, "titulo": "Receita de {nome} vence em 30 dias — oferecer novo exame"},
@@ -60,7 +60,7 @@
          "opcoes": ["Monofocal", "Multifocal", "Bifocal", "Solar com grau", "Lente de contato"]},
         {"chave": "previsao", "rotulo": "Previsão de entrega", "tipo": "data"},
         {"chave": "total", "rotulo": "Valor total", "tipo": "dinheiro", "obrigatorio": true},
-        {"chave": "obs", "rotulo": "Observações", "tipo": "textolongo"}
+        {"chave": "obs", "rotulo": "Observações", "tipo": "textolongo", "interno": true}
       ],
       "lembretes": [
         {"campo": "previsao", "dias_antes": 0, "titulo": "Avisar {nome}: {titulo} está previsto para hoje"}
