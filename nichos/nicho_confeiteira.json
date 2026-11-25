@@ -1,0 +1,47 @@
+{
+  "id": "confeiteira",
+  "cor": "#d6457f",
+  "nome": "CRM Confeitaria",
+  "modulos": ["registros", "ia"],
+  "visibilidade": "equipe",
+  "rotulos": {"cliente": "Cliente", "clientes": "Clientes", "atendente": "Atendente"},
+  "campos_cliente": [
+    {"chave": "aniversario", "rotulo": "Aniversário", "tipo": "data"},
+    {"chave": "alergias", "rotulo": "Alergias / preferências", "tipo": "texto"}
+  ],
+  "tipos_registro": [
+    {
+      "id": "encomenda",
+      "rotulo": "Encomenda",
+      "rotulo_plural": "Encomendas",
+      "etapas": ["Orçamento", "Sinal pago", "Em produção", "Pronta", "Entregue", "Cancelada"],
+      "etapas_finais": ["Entregue", "Cancelada"],
+      "data_ref": "entrega",
+      "valor": "total",
+      "titulo": "produto",
+      "pagamentos": {"sinal_pct": 50},
+      "campos": [
+        {"chave": "produto", "rotulo": "Produto", "tipo": "texto", "obrigatorio": true, "placeholder": "Bolo de aniversário"},
+        {"chave": "sabor", "rotulo": "Sabor / recheio", "tipo": "texto"},
+        {"chave": "tamanho", "rotulo": "Tamanho", "tipo": "texto", "placeholder": "ex.: 20 fatias"},
+        {"chave": "entrega", "rotulo": "Data da entrega", "tipo": "data", "obrigatorio": true},
+        {"chave": "horario", "rotulo": "Horário", "tipo": "texto", "placeholder": "ex.: 15:30"},
+        {"chave": "modo", "rotulo": "Retirada ou entrega", "tipo": "select", "opcoes": ["Retirada", "Entrega"], "padrao": "Retirada"},
+        {"chave": "endereco_entrega", "rotulo": "Endereço de entrega", "tipo": "texto"},
+        {"chave": "decoracao", "rotulo": "Decoração / topo / tema", "tipo": "textolongo"},
+        {"chave": "total", "rotulo": "Valor total", "tipo": "dinheiro", "obrigatorio": true},
+        {"chave": "custo", "rotulo": "Custo estimado", "tipo": "dinheiro", "ajuda": "Só para você ver o lucro."}
+      ],
+      "lembretes": [
+        {"campo": "entrega", "dias_antes": 3, "titulo": "Comprar ingredientes: {titulo} de {nome} (entrega em 3 dias)"},
+        {"campo": "entrega", "dias_antes": 1, "titulo": "Amanhã: entregar {titulo} para {nome}"}
+      ]
+    }
+  ],
+  "mensagens": {
+    "orcamento": "Oi {primeiro_nome}! Segue o orçamento do(a) {titulo} para {data}: {valor}. Para reservar a data, peço um sinal de 50%. Combinado? 💛",
+    "pronta": "Oi {primeiro_nome}! Seu(sua) {titulo} está prontinho(a) 🎂 Combinamos {data}. Tudo certo para a retirada?",
+    "cobranca": "Oi {primeiro_nome}, tudo bem? Passando para lembrar do restante do pagamento da encomenda ({titulo}). Obrigada! 💛"
+  },
+  "ia": {"persona": "Você é a confeiteira de uma confeitaria artesanal brasileira: carinhosa, simpática e objetiva."}
+}
