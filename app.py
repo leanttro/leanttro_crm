@@ -314,6 +314,11 @@ class Cliente(db.Model):
     observacoes = db.Column(db.Text, nullable=False, default="")
     dados = db.Column(db.JSON)                                          # nichos: campos_cliente do manifesto
     conta_id = db.Column(db.Integer, db.ForeignKey("contas.id"), index=True)   # nichos: a qual conta pertence
+    portal_hash = db.Column(db.String(64), index=True)                  # sha256 do token do link do cliente final
+    portal_token_enc = db.Column(db.Text)                               # token cifrado (para a loja copiar o link de novo)
+    portal_aceite_em = db.Column(db.DateTime)                           # quando o cliente aceitou a política
+    portal_aceite_versao = db.Column(db.Integer)
+    portal_ultimo_acesso = db.Column(db.DateTime)
     criado_em = db.Column(db.DateTime, nullable=False, default=agora)
 
 
@@ -566,6 +571,24 @@ class CustoCliente(db.Model):
     criado_em = db.Column(db.DateTime, nullable=False, default=agora)
 
 
+class PortalMsg(db.Model):
+    """Conversa entre a loja e o cliente final (pela área do cliente). Pode levar UM arquivo (ex.: foto da receita nova)."""
+    __tablename__ = "portal_msgs"
+    id = db.Column(db.Integer, primary_key=True)
+    conta_id = db.Column(db.Integer, db.ForeignKey("contas.id"), nullable=False, index=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey("clientes.id", ondelete="CASCADE"), nullable=False, index=True)
+    de = db.Column(db.String(8), nullable=False)                         # cliente | loja
+    tipo = db.Column(db.String(12), nullable=False, default="mensagem")  # mensagem | pedido | receita | dados
+    texto = db.Column(db.Text, nullable=False, default="")
+    arquivo = db.Column(db.String(300))
+    nome = db.Column(db.String(200))
+    mime = db.Column(db.String(60))
+    tamanho = db.Column(db.Integer)
+    lida = db.Column(db.Boolean, nullable=False, default=False)          # lida pela loja (só importa para de='cliente')
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    criado_em = db.Column(db.DateTime, nullable=False, default=agora)
+
+
 class Anexo(db.Model):
     """Arquivo (foto/PDF da receita etc.) preso a um registro. O arquivo fica em DATA_DIR/uploads/contas/<conta>/, não no banco."""
     __tablename__ = "anexos"
@@ -751,6 +774,27 @@ def cliente_de_lead(lead):
 # HELPERS: validação, dedupe, Serper, Groq, PDF de proposta
 # ═══════════════════════════════════════════════════════════════════════════
 LEAD_ORIGENS = ("serper", "manual", "indicacao")
+TERMO_VERSAO = 1
+
+
+def termo_portal(loja):
+    """Texto-modelo (LGPD). Peça para um advogado revisar antes de usar com clientes reais."""
+    return (f"POLÍTICA DE PRIVACIDADE E TERMO DE USO — {loja}\n\n"
+            f"1. Quem cuida dos seus dados\nA {loja} é a responsável (controladora) pelos dados tratados nesta área. "
+            "Para falar sobre seus dados, use o contato da própria loja.\n\n"
+            "2. Quais dados\nNome, telefone, e-mail, endereço, data de nascimento, convênio, receitas e medidas de "
+            "visão (dados de saúde), pedidos, pagamentos, mensagens e os arquivos que você enviar.\n\n"
+            "3. Para quê\nAtender você, produzir e entregar seus óculos, avisar sobre retirada, vencimento de receita e "
+            "consultas, e cuidar de cobranças. Os dados de saúde são usados só para isso e com o seu consentimento.\n\n"
+            "4. Com quem compartilhamos\nSomente com quem precisa para o serviço (por exemplo, laboratório de lentes) e "
+            "com os provedores de tecnologia que armazenam as informações com segurança. Não vendemos seus dados.\n\n"
+            "5. Segurança e guarda\nSeu acesso é por um link pessoal e privado: não compartilhe. Guardamos os dados "
+            "enquanto houver relação com a loja ou obrigação legal.\n\n"
+            "6. Seus direitos\nVocê pode ver, corrigir, pedir cópia ou exclusão dos seus dados e retirar este "
+            "consentimento a qualquer momento, falando com a loja. Nesta área você já pode ver e corrigir seus dados.\n\n"
+            "Ao marcar “li e concordo”, você aceita este termo e autoriza o tratamento descrito acima.")
+
+
 FORMAS_PG = ("pix", "dinheiro", "debito", "credito", "boleto", "outro")
 EXT_ANEXO = {".pdf": "application/pdf", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
 MAX_ANEXOS_REGISTRO = 10
@@ -1064,6 +1108,8 @@ def _validar_campos(lista, onde, reservadas=()):
                 if isinstance(c[k], bool) or not isinstance(c[k], (int, float)):
                     raise ValueError(f"{ref} ('{chave}'): '{k}' deve ser número.")
                 novo[k] = c[k]
+        novo["portal"] = bool(c.get("portal"))
+        novo["interno"] = bool(c.get("interno"))
         for k in ("ajuda", "grupo", "placeholder"):
             if isinstance(c.get(k), str) and c[k].strip():
                 novo[k] = c[k].strip()[:120]
@@ -1151,7 +1197,7 @@ def _validar_manifesto(m):
                 raise ValueError(f"{onde}, lembrete #{j}: 'dias_antes' deve ser inteiro de 0 a 365.")
             lembretes.append(dict(campo=lem["campo"], dias_antes=dias,
                                   titulo=str(lem.get("titulo") or f"{t.get('rotulo') or tid}: {{titulo}} — {{nome}}")[:200]))
-        tipos.append(dict(id=tid, anexos=bool(t.get("anexos")), rotulo=str(t.get("rotulo") or tid)[:60],
+        tipos.append(dict(id=tid, anexos=bool(t.get("anexos")), portal=t.get("portal", True) is not False, rotulo=str(t.get("rotulo") or tid)[:60],
                           rotulo_plural=str(t.get("rotulo_plural") or (t.get("rotulo") or tid) + "s")[:60],
                           campos=campos, etapas=etapas, etapas_finais=finais, data_ref=data_ref, valor=valor,
                           titulo=titulo, pagamentos=pg, lembretes=lembretes))
@@ -1391,6 +1437,13 @@ def migrar():
     _add_col("atividades", "registro_id", "INTEGER REFERENCES registros(id) ON DELETE CASCADE")
     _add_col("atividades", "auto_chave", "VARCHAR(80)")
     _add_col("contas", "taxas", "JSON")
+    _add_col("clientes", "portal_hash", "VARCHAR(64)")
+    _add_col("clientes", "portal_token_enc", "TEXT")
+    _add_col("clientes", "portal_aceite_em", "DATETIME")
+    _add_col("clientes", "portal_aceite_versao", "INTEGER")
+    _add_col("clientes", "portal_ultimo_acesso", "DATETIME")
+    db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_clientes_portal_hash ON clientes(portal_hash)"))
+    db.session.commit()
     _add_col("registro_pagamentos", "forma", "VARCHAR(12)")
     _add_col("registro_pagamentos", "parcelas", "INTEGER")
     _add_col("registro_pagamentos", "taxa_cent", "INTEGER NOT NULL DEFAULT 0")
@@ -1427,7 +1480,7 @@ def criar_app():
     def _csrf():
         if "csrf" not in session:
             session["csrf"] = secrets.token_urlsafe(24)
-        if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        if request.method in ("POST", "PUT", "PATCH", "DELETE") and not request.path.startswith("/api/c/"):
             enviado = request.headers.get("X-CSRF") or request.form.get("csrf", "")
             if not hmac.compare_digest(enviado, session["csrf"]):
                 if request.path.startswith("/api/"):
@@ -1452,13 +1505,15 @@ def criar_app():
     def _headers(r):
         r.headers["X-Content-Type-Options"] = "nosniff"
         r.headers["X-Frame-Options"] = "DENY"
-        r.headers["Referrer-Policy"] = "same-origin"
+        r.headers["Referrer-Policy"] = "no-referrer" if request.path.startswith(("/c/", "/api/c/")) else "same-origin"
+        if request.path.startswith(("/c/", "/api/c/")):
+            r.headers["X-Robots-Tag"] = "noindex, nofollow"
         r.headers["Content-Security-Policy"] = ("default-src 'self' 'unsafe-inline' data: blob:; "
                                                 "img-src 'self' data: blob: https://res.cloudinary.com; "
                                                 "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
                                                 "font-src 'self' data: https://fonts.gstatic.com; "
                                                 "connect-src 'self'; frame-ancestors 'none'")
-        if request.path.startswith(("/api/", "/app", "/login", "/conta")):
+        if request.path.startswith(("/api/", "/app", "/login", "/conta", "/c/")):
             r.headers["Cache-Control"] = "no-store"
         return r
 
@@ -2790,6 +2845,21 @@ def criar_app():
         return dict(id=x.id, cliente_id=x.cliente_id, registro_id=x.registro_id, categoria=x.categoria,
                     descricao=x.descricao, valor_cent=x.valor_cent, data=_fmt(x.data))
 
+    def _n_pmsg_json(m):
+        return dict(id=m.id, de=m.de, tipo=m.tipo, texto=m.texto, nome=m.nome, tamanho=m.tamanho,
+                    tem_arquivo=bool(m.arquivo), nova=(m.de == "cliente" and not m.lida), em=_fmt(m.criado_em))
+
+    def _n_portal_json(c):
+        if not c.portal_hash:
+            return dict(ativo=False)
+        tok = decifrar(c.portal_token_enc)
+        if not tok:
+            return dict(ativo=False)
+        url = request.host_url.rstrip("/") + "/c/" + tok
+        loja = (db.session.get(Conta, c.conta_id).nome if c.conta_id else "")
+        wa = wa_link(c.telefone, f"Oi {(c.empresa or '').split(' ')[0]}! Este é o seu acesso pessoal à área do cliente da {loja}: {url}")
+        return dict(ativo=True, url=url, whatsapp=wa, aceite_em=_fmt(c.portal_aceite_em), ultimo_acesso=_fmt(c.portal_ultimo_acesso))
+
     def _n_anexo_json(a):
         return dict(id=a.id, nome=a.nome, mime=a.mime, tamanho=a.tamanho, em=_fmt(a.criado_em))
 
@@ -2873,7 +2943,11 @@ def criar_app():
         custos = list(db.session.scalars(select(CustoCliente).where(CustoCliente.cliente_id == c.id)
                                          .order_by(CustoCliente.data.desc(), CustoCliente.id.desc()).limit(300)))
         total_custos = sum(x.valor_cent for x in custos)
+        msgs = list(db.session.scalars(select(PortalMsg).where(PortalMsg.cliente_id == c.id)
+                                       .order_by(PortalMsg.id.desc()).limit(60)))[::-1]
         return jsonify(ok=True, cliente=_n_cli_json(c), registros=[_n_reg_json(r, c.empresa) for r in regs],
+                       portal=_n_portal_json(c), mensagens=[_n_pmsg_json(x) for x in msgs],
+                       nao_lidas=sum(1 for x in msgs if x.de == "cliente" and not x.lida),
                        a_receber_cent=int(a_receber), custos=[_n_custo_json(x) for x in custos],
                        lucro=dict(recebido_cent=int(recebido), taxas_cent=int(taxas), custos_cent=total_custos,
                                   liquido_cent=int(recebido) - int(taxas) - total_custos))
@@ -2896,8 +2970,11 @@ def criar_app():
         c = _n_cliente(cid)
         if db.session.scalar(select(func.count()).select_from(Registro).where(Registro.cliente_id == c.id)):
             return _erro("Este cadastro tem registros. Apague-os primeiro.", 409)
+        arquivos = [m.arquivo for m in db.session.scalars(select(PortalMsg).where(PortalMsg.cliente_id == c.id)) if m.arquivo]
         db.session.delete(c)
         db.session.commit()
+        for nome in arquivos:
+            (DATA_DIR / "uploads" / nome).unlink(missing_ok=True)
         return jsonify(ok=True)
 
     # ── registros ──────────────────────────────────────────────────────────
@@ -3125,7 +3202,6 @@ def criar_app():
         a = _n_anexo(aid)
         resp = send_from_directory(DATA_DIR / "uploads", a.arquivo, mimetype=a.mime, download_name=a.nome)
         resp.headers["X-Content-Type-Options"] = "nosniff"
-        resp.headers["Content-Security-Policy"] = "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox"
         resp.headers["Cache-Control"] = "private, no-store"
         return resp
 
@@ -3137,6 +3213,209 @@ def criar_app():
         db.session.delete(a)
         db.session.commit()
         return jsonify(ok=True)
+
+
+    # ── área do cliente: o que a LOJA faz (gerar/desativar link, responder) ─
+    @app.post("/api/n/clientes/<int:cid>/portal")
+    @login_obrigatorio
+    def n_portal_gerar(cid):
+        c = _n_cliente(cid)
+        tok = secrets.token_urlsafe(24)
+        c.portal_hash = hashlib.sha256(tok.encode()).hexdigest()
+        c.portal_token_enc = cifrar(tok)
+        db.session.commit()
+        return jsonify(ok=True, portal=_n_portal_json(c))
+
+    @app.delete("/api/n/clientes/<int:cid>/portal")
+    @login_obrigatorio
+    def n_portal_desativar(cid):
+        c = _n_cliente(cid)
+        c.portal_hash = c.portal_token_enc = None
+        db.session.commit()
+        return jsonify(ok=True, portal=_n_portal_json(c))
+
+    @app.post("/api/n/clientes/<int:cid>/mensagens")
+    @login_obrigatorio
+    def n_pmsg_enviar(cid):
+        c, d, u = _n_cliente(cid), _json(), usuario_atual()
+        try:
+            texto = _txt(d, "texto", 2000, True, "Mensagem")
+        except ValueError as e:
+            return _erro(str(e))
+        m = PortalMsg(conta_id=u.conta_id, cliente_id=c.id, de="loja", tipo="mensagem", texto=texto, lida=True, user_id=u.id)
+        db.session.add(m)
+        db.session.commit()
+        return jsonify(ok=True, mensagem=_n_pmsg_json(m))
+
+    @app.post("/api/n/clientes/<int:cid>/mensagens/lidas")
+    @login_obrigatorio
+    def n_pmsg_lidas(cid):
+        c = _n_cliente(cid)
+        db.session.execute(PortalMsg.__table__.update().where(PortalMsg.cliente_id == c.id, PortalMsg.de == "cliente")
+                           .values(lida=True))
+        db.session.commit()
+        return jsonify(ok=True)
+
+    @app.get("/api/n/pmsg/<int:mid>/arquivo")
+    @login_obrigatorio
+    def n_pmsg_arquivo(mid):
+        m = db.session.get(PortalMsg, mid)
+        if not m or not m.arquivo or m.conta_id != usuario_atual().conta_id:
+            abort(404)
+        _n_cliente(m.cliente_id)
+        resp = send_from_directory(DATA_DIR / "uploads", m.arquivo, mimetype=m.mime, download_name=m.nome)
+        resp.headers["Cache-Control"] = "private, no-store"
+        return resp
+
+    # ── área do cliente FINAL: sem login, só o link pessoal (/c/<token>) ────
+    def _portal_busca(token):
+        if not re.fullmatch(r"[A-Za-z0-9_-]{20,64}", token or "") or not limitar(f"portal:{request.remote_addr}", 300, 600):
+            return None
+        c = db.session.scalar(select(Cliente).where(Cliente.portal_hash == hashlib.sha256(token.encode()).hexdigest()))
+        conta = db.session.get(Conta, c.conta_id) if c and c.conta_id else None
+        m = NICHOS.get(conta.nicho) if conta else None
+        return (c, conta, m) if conta and conta.ativo and m else None
+
+    def _portal(token, exige_aceite=True):
+        r = _portal_busca(token)
+        if not r:
+            abort(404)
+        c = r[0]
+        if exige_aceite and c.portal_aceite_versao != TERMO_VERSAO:
+            abort(403)
+        return r
+
+    @app.get("/c/<token>")
+    def portal_pagina(token):
+        r = _portal_busca(token)
+        return render_template("portal.html", loja=(r[1].nome if r else ""), cor=(r[2]["cor"] if r else "#2563eb"))
+
+    def _portal_visivel(campos):
+        return [x for x in campos if not x.get("interno")]
+
+    @app.get("/api/c/<token>")
+    def portal_dados_ver(token):
+        c, conta, m = _portal(token, exige_aceite=False)
+        c.portal_ultimo_acesso = agora()
+        db.session.commit()
+        base = dict(ok=True, loja=conta.nome, cor=m["cor"], termo=termo_portal(conta.nome), termo_versao=TERMO_VERSAO,
+                    aceite=c.portal_aceite_versao == TERMO_VERSAO, primeiro_nome=(c.empresa or "").split(" ")[0])
+        if not base["aceite"]:
+            return jsonify(base)
+        campos_cli = _portal_visivel(m["campos_cliente"])
+        grupos = []
+        for t in m["tipos_registro"]:
+            if not t.get("portal", True):
+                continue
+            vis = _portal_visivel(t["campos"])
+            chaves = {x["chave"] for x in vis}
+            regs = db.session.scalars(select(Registro).where(Registro.cliente_id == c.id, Registro.tipo == t["id"])
+                                      .order_by(Registro.data_ref.desc(), Registro.id.desc()).limit(50))
+            itens = []
+            for r in regs:
+                anexos = [dict(id=a.id, nome=a.nome, mime=a.mime, tamanho=a.tamanho) for a in
+                          db.session.scalars(select(Anexo).where(Anexo.registro_id == r.id).order_by(Anexo.id))] if t["anexos"] else []
+                itens.append(dict(id=r.id, titulo=r.titulo, status=r.status, data_ref=_fmt(r.data_ref), valor_cent=r.valor_cent,
+                                  dados={k: v for k, v in (r.dados or {}).items() if k in chaves}, anexos=anexos,
+                                  pagamentos=[dict(descricao=p.descricao, valor_cent=p.valor_cent, recebido_cent=p.valor_recebido_cent,
+                                                   vence_em=_fmt(p.vence_em), status=p.status) for p in r.pagamentos] if t["pagamentos"] else []))
+            grupos.append(dict(id=t["id"], rotulo=t["rotulo"], rotulo_plural=t["rotulo_plural"], etapas_finais=t["etapas_finais"],
+                               valor=t["valor"], campos=[{k: x[k] for k in ("chave", "rotulo", "tipo", "grupo") if k in x} for x in vis],
+                               itens=itens))
+        msgs = db.session.scalars(select(PortalMsg).where(PortalMsg.cliente_id == c.id, PortalMsg.tipo != "dados")
+                                  .order_by(PortalMsg.id.desc()).limit(100))
+        base.update(
+            cliente=dict(nome=c.empresa, telefone=c.telefone, email=c.email, endereco=c.endereco, documento=c.documento,
+                         dados=c.dados or {}),
+            campos_cliente=[{k: x[k] for k in ("chave", "rotulo", "tipo", "opcoes", "portal", "ajuda") if k in x} for x in campos_cli],
+            grupos=grupos,
+            mensagens=[dict(id=x.id, de=x.de, tipo=x.tipo, texto=x.texto, nome=x.nome, tem_arquivo=bool(x.arquivo),
+                            em=_fmt(x.criado_em)) for x in list(msgs)[::-1]])
+        return jsonify(base)
+
+    @app.post("/api/c/<token>/aceite")
+    def portal_aceitar(token):
+        c, _, _ = _portal(token, exige_aceite=False)
+        if (_json().get("aceito") is not True):
+            return _erro("Marque que leu e concorda para continuar.")
+        c.portal_aceite_em, c.portal_aceite_versao = agora(), TERMO_VERSAO
+        db.session.commit()
+        return jsonify(ok=True)
+
+    @app.put("/api/c/<token>/dados")
+    def portal_dados_editar(token):
+        c, conta, m = _portal(token)
+        d = _json()
+        try:
+            c.empresa = _txt(d, "nome", 160, True, "Nome")
+            c.telefone = _txt(d, "telefone", 40)
+            c.endereco = _txt(d, "endereco", 300)
+            email = _txt(d, "email", 254)
+            if email and not EMAIL_RE.match(email):
+                raise ValueError("E-mail inválido.")
+            c.email = email
+            editaveis = [x for x in m["campos_cliente"] if x.get("portal") and not x.get("interno")]
+            if editaveis:
+                c.dados = validar_dados(editaveis, d.get("dados"), c.dados)
+        except ValueError as e:
+            db.session.rollback()
+            return _erro(str(e))
+        db.session.add(PortalMsg(conta_id=conta.id, cliente_id=c.id, de="cliente", tipo="dados",
+                                 texto="Atualizou os dados cadastrais pela área do cliente.", lida=False))
+        db.session.commit()
+        return jsonify(ok=True)
+
+    @app.post("/api/c/<token>/mensagens")
+    def portal_mensagem(token):
+        c, conta, _ = _portal(token)
+        f = request.form if request.form else _json()
+        if not limitar(f"pmsg:{c.id}", 20, 3600):
+            return _erro("Muitas mensagens seguidas. Tente de novo daqui a pouco.", 429)
+        try:
+            texto = _txt(f, "texto", 2000)
+        except ValueError as e:
+            return _erro(str(e))
+        tipo = f.get("tipo") if f.get("tipo") in ("mensagem", "pedido", "receita") else "mensagem"
+        arq, rel, nome, mime, tam = request.files.get("arquivo"), None, None, None, None
+        if arq and arq.filename:
+            ext = Path(arq.filename).suffix.lower()
+            if ext not in EXT_ANEXO:
+                return _erro("Envie PDF, PNG, JPG ou WEBP.")
+            cab = arq.stream.read(16)
+            arq.stream.seek(0)
+            if not _assinatura_ok(ext, cab):
+                return _erro("O arquivo não parece ser um " + ext[1:].upper() + " de verdade.")
+            (DATA_DIR / "uploads" / "contas" / str(conta.id) / "portal").mkdir(parents=True, exist_ok=True)
+            rel = f"contas/{conta.id}/portal/{secrets.token_hex(12)}{ext}"
+            arq.save(DATA_DIR / "uploads" / rel)
+            nome, mime, tam = secure_filename(arq.filename)[:200] or f"arquivo{ext}", EXT_ANEXO[ext], (DATA_DIR / "uploads" / rel).stat().st_size
+        if not texto and not rel:
+            return _erro("Escreva uma mensagem ou anexe um arquivo.")
+        db.session.add(PortalMsg(conta_id=conta.id, cliente_id=c.id, de="cliente", tipo=tipo, texto=texto or "", arquivo=rel,
+                                 nome=nome, mime=mime, tamanho=tam, lida=False))
+        db.session.commit()
+        return jsonify(ok=True)
+
+    @app.get("/api/c/<token>/arquivo/<tipo>/<int:aid>")
+    def portal_arquivo(token, tipo, aid):
+        c, conta, m = _portal(token)
+        if tipo == "anexo":
+            a = db.session.get(Anexo, aid)
+            r = db.session.get(Registro, a.registro_id) if a else None
+            tp = next((t for t in m["tipos_registro"] if r and t["id"] == r.tipo), None)
+            if not a or r.cliente_id != c.id or not tp or not tp.get("portal", True):
+                abort(404)
+            rel, mime, nome = a.arquivo, a.mime, a.nome
+        elif tipo == "msg":
+            x = db.session.get(PortalMsg, aid)
+            if not x or x.cliente_id != c.id or not x.arquivo:
+                abort(404)
+            rel, mime, nome = x.arquivo, x.mime, x.nome
+        else:
+            abort(404)
+        resp = send_from_directory(DATA_DIR / "uploads", rel, mimetype=mime, download_name=nome)
+        resp.headers["Cache-Control"] = "private, no-store"
+        return resp
 
     # ── pagamentos do registro ─────────────────────────────────────────────
     @app.post("/api/n/registros/<int:rid>/pagamentos")
@@ -3343,7 +3622,12 @@ def criar_app():
         pend = _n_ativ_visiveis(select(func.count()).select_from(Atividade).where(
             Atividade.registro_id.is_not(None), Atividade.feita_em.is_(None), Atividade.vence_em <= agora_local()))
         clientes = db.session.scalar(_n_visivel(select(func.count()).select_from(Cliente), Cliente))
+        novas = db.session.execute(_n_visivel(
+            select(PortalMsg, Cliente.empresa).join(Cliente, Cliente.id == PortalMsg.cliente_id)
+            .where(PortalMsg.de == "cliente", PortalMsg.lida.is_(False)), Cliente).order_by(PortalMsg.id.desc()).limit(8)).all()
         return jsonify(ok=True, clientes=clientes, tipos=tipos, financeiro=financeiro, proximos=proximos[:8],
+                       msgs_novas=[dict(id=m.id, cliente_id=m.cliente_id, cliente_nome=nome, tipo=m.tipo,
+                                        texto=(m.texto or "")[:90], em=_fmt(m.criado_em)) for m, nome in novas],
                        lembretes_pendentes=db.session.scalar(pend))
 
     @app.get("/api/n/agenda")
