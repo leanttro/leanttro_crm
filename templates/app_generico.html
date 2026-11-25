@@ -94,6 +94,8 @@ dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:6px 14px}dt{color:va
 a{color:var(--roxo-esc)}
 #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:28px;background:var(--escuro);color:#fff;padding:12px 18px;border-radius:12px;font-size:13px;font-weight:600;opacity:0;pointer-events:none;transition:opacity .2s;z-index:50;max-width:90vw}
 #toast.on{opacity:1}
+.arq{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid var(--linha);font-weight:600}.arq:first-of-type{border-top:0}.arq a{word-break:break-all}
+.taxa-prev{margin:10px 0 0;font-size:13px;color:var(--mudo)}
 </style>
 </head>
 <body>
@@ -135,6 +137,10 @@ const cent = v => {
   if (!isFinite(n) || n < 0) throw new Error('Valor inválido.');
   return Math.round(n * 100);
 };
+const FORMAS = {pix: 'Pix', dinheiro: 'Dinheiro', debito: 'Débito', credito: 'Crédito', boleto: 'Boleto', outro: 'Outro'};
+const CATEGORIAS_CUSTO = ['Material / produto', 'Laboratório / terceirizado', 'Frete / entrega', 'Mão de obra', 'Comissão', 'Outros'];
+let TAXAS = null;
+const tamanhoBR = b => b > 1048576 ? (b / 1048576).toFixed(1).replace('.', ',') + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
 const vazio = t => `<p class="vazio">${t}</p>`;
 async function api(metodo, url, corpo) {
   const r = await fetch(url, {method: metodo, headers: {'Content-Type': 'application/json', 'X-CSRF': CSRF}, body: corpo ? JSON.stringify(corpo) : undefined});
@@ -209,7 +215,11 @@ const VIEWS = {
         ${temPg ? `<div><small>Recebido no mês</small><span class="num">${reais(f.recebido_mes_cent)}</span></div>
         <div><small>Previsto no mês</small><span class="num">${reais(f.previsto_mes_cent)}</span></div>
         <div><small>A receber</small><span class="num">${reais(f.a_receber_cent)}</span></div>
-        <div><small>Em atraso</small><span class="num" style="color:${f.em_atraso_cent ? 'var(--erro)' : 'inherit'}">${reais(f.em_atraso_cent)}</span></div>` : ''}</div>
+        <div><small>Em atraso</small><span class="num" style="color:${f.em_atraso_cent ? 'var(--erro)' : 'inherit'}">${reais(f.em_atraso_cent)}</span></div>
+        <div><small>Taxas de cartão (mês)</small><span class="num">${reais(f.taxas_mes_cent)}</span></div>
+        <div><small>Custos (mês)</small><span class="num">${reais(f.custos_mes_cent)}</span></div>
+        <div><small>Lucro líquido (mês)</small><span class="num">${reais(f.recebido_mes_cent - f.taxas_mes_cent - f.custos_mes_cent)}</span></div>` : `
+        <div><small>Custos (mês)</small><span class="num">${reais(f.custos_mes_cent)}</span></div>`}</div>
       <div class="grid dois">
         <section class="card"><h2>Em andamento</h2>
           ${d.tipos.map(t => `<div class="linha clic" data-go="t-${t.id}"><div>${esc(t.rotulo_plural)}<small>${t.etapas.filter(e => !e.final && e.qtd).map(e => esc(e.etapa) + ': ' + e.qtd).join(' · ') || 'Nada em aberto'}</small></div><span class="chip">${t.em_aberto}</span></div>`).join('')}
@@ -243,6 +253,21 @@ const VIEWS = {
         <section class="card"><h2>Novo registro</h2>
           <div class="atalhos">${N.tipos_registro.map(t => `<button class="btn sec peq" data-act="reg-novo" data-tipo="${t.id}" data-cli="${c.id}">+ ${esc(t.rotulo)}</button>`).join('')}</div>
           ${d.a_receber_cent ? `<div class="kpis"><div><small>A receber deste ${esc(R.cliente.toLowerCase())}</small><span class="num">${reais(d.a_receber_cent)}</span></div></div>` : ''}</section></div>
+      <section class="card"><h2>Custos e lucro deste ${esc(R.cliente.toLowerCase())}</h2>
+        <div class="kpis" style="margin-bottom:12px">
+          <div><small>Recebido</small><span class="num">${reais(d.lucro.recebido_cent)}</span></div>
+          <div><small>Taxas de cartão</small><span class="num">${reais(d.lucro.taxas_cent)}</span></div>
+          <div><small>Custos</small><span class="num">${reais(d.lucro.custos_cent)}</span></div>
+          <div><small>Lucro líquido</small><span class="num" style="color:${d.lucro.liquido_cent < 0 ? 'var(--erro)' : 'var(--ok)'}">${reais(d.lucro.liquido_cent)}</span></div></div>
+        ${d.custos.map(x => `<div class="linha"><div>${esc(x.categoria)}${x.descricao ? ' · ' + esc(x.descricao) : ''}<small>${dataBR(x.data)} · ${reais(x.valor_cent)}${x.registro_id ? ' · ' + esc((d.registros.find(r => r.id === x.registro_id) || {}).titulo || 'registro') : ''}</small></div>
+          <button class="btn peq sec perigo" data-act="custo-del" data-id="${x.id}" aria-label="Remover custo">×</button></div>`).join('') || vazio('Nenhum custo lançado para este cadastro.')}
+        <div class="sec-d"><div class="form">
+          <div><label for="cu-cat">Tipo de gasto</label><input id="cu-cat" list="cu-cats" maxlength="40" placeholder="Ex.: Laboratório"><datalist id="cu-cats">${CATEGORIAS_CUSTO.map(x => `<option value="${esc(x)}">`).join('')}</datalist></div>
+          <div><label for="cu-v">Valor (R$)</label><input id="cu-v" inputmode="decimal" placeholder="0,00"></div>
+          <div class="full"><label for="cu-d">Descrição (opcional)</label><input id="cu-d" maxlength="160"></div>
+          <div><label for="cu-data">Data</label><input id="cu-data" type="date"></div>
+          <div><label for="cu-reg">Ligado a (opcional)</label><select id="cu-reg"><option value="">Ao cadastro todo</option>${d.registros.map(r => `<option value="${r.id}">${esc(TIPOS[r.tipo]?.rotulo || r.tipo)} · ${esc(r.titulo)}</option>`).join('')}</select></div></div>
+          <p style="margin:12px 0 0"><button class="btn peq" data-act="custo-add">Lançar custo</button></p></div></section>
       <section class="card"><h2>Histórico</h2>
         ${d.registros.map(r => `<div class="linha clic" data-act="reg-abrir" data-id="${r.id}"><div>${esc(TIPOS[r.tipo]?.rotulo || r.tipo)} · ${esc(r.titulo)}<small>${dataBR(r.data_ref)}${r.valor_cent ? ' · ' + reais(r.valor_cent) : ''}</small></div>${chipSt(TIPOS[r.tipo], r.status)}</div>`).join('') || vazio('Nenhum registro ainda.')}</section>`;
   },
@@ -298,6 +323,7 @@ const VIEWS = {
   async perfil(el) {
     const me = (await api('GET', '/api/me')).usuario;
     const us = EU.admin ? (await api('GET', '/api/admin/usuarios')).usuarios : [];
+    const tx = EU.admin ? (await api('GET', '/api/n/taxas')).taxas : null;
     el.innerHTML = `<h1>${EU.admin ? 'Gestão' : 'Perfil'}</h1><p class="sub">${esc(me.nome)} · ${esc(me.email)}</p>
       <div class="grid dois"><section class="card"><h2>Minha conta</h2>
         <p><a class="btn sec peq" href="/conta/senha">Trocar senha</a></p>
@@ -310,7 +336,12 @@ const VIEWS = {
             <div class="acoes"><button class="btn peq sec" data-act="u-reset" data-id="${u.id}">Nova senha</button>${u.id !== EU.id ? `<button class="btn peq sec ${u.status === 'ativo' ? 'perigo' : ''}" data-act="u-status" data-id="${u.id}" data-v="${u.status === 'ativo' ? 'bloqueado' : 'ativo'}">${u.status === 'ativo' ? 'Bloquear' : 'Ativar'}</button>` : ''}</div></div>`).join('')}
           <div class="sec-d"><div class="form"><div><label for="u-nome">Nome</label><input id="u-nome" maxlength="80"></div><div><label for="u-mail">E-mail</label><input id="u-mail" type="email" maxlength="254"></div>
             <div><label for="u-papel">Perfil</label><select id="u-papel"><option value="vendedor">${esc(R.atendente)}</option><option value="admin">Administrador</option></select></div></div>
-            <p style="margin:12px 0 0"><button class="btn peq" data-act="u-novo">Criar acesso</button></p><div id="u-msg"></div></div></section>` : ''}</div>`;
+            <p style="margin:12px 0 0"><button class="btn peq" data-act="u-novo">Criar acesso</button></p><div id="u-msg"></div></div></section>
+        <section class="card"><h2>Taxas da maquininha</h2>
+          <p class="aj" style="margin:0 0 6px">Informe em % o que a maquininha desconta. É usado para calcular o seu lucro líquido ao receber um pagamento.</p>
+          <div class="form"><div><label for="tx-debito">Débito (%)</label><input id="tx-debito" inputmode="decimal" value="${String(tx.debito).replace('.', ',')}"></div>
+          ${Array.from({length: 12}, (_, i) => `<div><label for="tx-c${i + 1}">Crédito ${i + 1}x (%)</label><input id="tx-c${i + 1}" inputmode="decimal" value="${String(tx['c' + (i + 1)]).replace('.', ',')}"></div>`).join('')}</div>
+          <p style="margin:12px 0 0"><button class="btn peq" data-act="taxas-salvar">Salvar taxas</button></p></section>` : ''}</div>`;
   },
 };
 
@@ -401,12 +432,17 @@ async function dlgRegistro(id) {
       ${camposHTML(t.campos, r.dados, 'rg-', produtos)}</div>
     <div class="rod"><button class="btn sec perigo" data-act="reg-apagar" data-id="${r.id}">Apagar</button><button class="btn" data-act="reg-salvar">Salvar alterações</button></div>
     ${t.pagamentos ? `<div class="sec-d"><h2>Pagamentos ${totalPg ? `<span class="chip" style="margin-left:6px">${reais(recPg)} de ${reais(totalPg)}</span>` : ''}</h2>
-      ${d.pagamentos.map(p => `<div class="linha"><div>${esc(p.descricao)}<small>vence ${dataBR(p.vence_em)} · ${reais(p.valor_cent)}${p.recebido_cent ? ' · recebido ' + reais(p.recebido_cent) : ''}</small></div>
+      ${d.pagamentos.map(p => `<div class="linha"><div>${esc(p.descricao)}<small>vence ${dataBR(p.vence_em)} · ${reais(p.valor_cent)}${p.recebido_cent ? ' · recebido ' + reais(p.recebido_cent) : ''}${p.forma ? ' · ' + esc(FORMAS[p.forma] || p.forma) + (p.forma === 'credito' && p.parcelas ? ' ' + p.parcelas + 'x' : '') : ''}${p.taxa_cent ? ' · taxa ' + reais(p.taxa_cent) : ''}</small></div>
         <div class="acoes">${chipPg(p.status)}<button class="btn peq sec" data-act="pg-receber" data-id="${p.id}" data-total="${p.valor_cent}" data-rec="${p.recebido_cent}">Receber</button>${p.recebido_cent ? '' : `<button class="btn peq sec perigo" data-act="pg-del" data-id="${p.id}">×</button>`}</div></div>`).join('') || vazio('Nenhum pagamento lançado.')}
       <div class="form" style="margin-top:8px"><div><label for="pg-d">Descrição</label><input id="pg-d" maxlength="120" placeholder="Entrada, parcela…"></div>
         <div><label for="pg-v">Valor (R$)</label><input id="pg-v" inputmode="decimal" placeholder="0,00"></div>
         <div><label for="pg-venc">Vencimento</label><input id="pg-venc" type="date"></div></div>
       <p style="margin:10px 0 0"><button class="btn peq sec" data-act="pg-add">Lançar pagamento</button></p></div>` : ''}
+    ${t.anexos ? `<div class="sec-d"><h2>Arquivos <span class="chip" style="margin-left:6px">${d.anexos.length}</span></h2>
+      ${d.anexos.map(a => `<div class="arq"><div><a href="/api/n/anexos/${a.id}" target="_blank" rel="noopener">${esc(a.nome)}</a><small style="display:block;color:var(--mudo);font-weight:500">${tamanhoBR(a.tamanho)} · ${dataBR(a.em)}</small></div>
+        <button class="btn peq sec perigo" data-act="anexo-del" data-id="${a.id}" aria-label="Remover arquivo">×</button></div>`).join('') || vazio('Nenhum arquivo. Anexe a foto ou o PDF da receita.')}
+      <div style="margin-top:10px"><label for="ax-arq">Foto ou PDF (até 10 MB)</label><input id="ax-arq" type="file" accept="image/*,application/pdf"><small class="aj">Fotos são reduzidas antes do envio para ocupar pouco espaço.</small></div>
+      <p style="margin:10px 0 0"><button class="btn peq sec" data-act="anexo-add">Anexar arquivo</button></p></div>` : ''}
     ${MSGS.length || TEM_IA ? `<div class="sec-d"><h2>Mensagem para ${esc(c.nome.split(' ')[0])}</h2>
       <div class="form"><div class="full"><label for="m-mod">Modelo</label><select id="m-mod">${MSGS.map(m => `<option value="${m}">${esc(m.replace(/_/g, ' '))}</option>`).join('')}${TEM_IA ? '<option value="">(livre, escrita pela IA)</option>' : ''}</select></div></div>
       <div class="acoes" style="justify-content:flex-start;margin-top:10px">${MSGS.length ? '<button class="btn peq sec" data-act="msg-gerar">Preencher modelo</button>' : ''}${TEM_IA ? '<button class="btn peq sec" data-act="msg-ia">Escrever / reescrever com IA</button>' : ''}</div>
@@ -423,6 +459,30 @@ const mostrarMsg = d => {
   const t = $('#m-txt'); t.value = d.texto; t.hidden = false;
   const w = $('#m-wa'); if (d.whatsapp) { $('#m-wa-a').href = d.whatsapp; w.hidden = false; } else w.hidden = true;
 };
+function atualizarTaxaPg() {
+  const forma = $('#pgr-forma'); if (!forma || !TAXAS) return;
+  $('#pgr-par-box').hidden = forma.value !== 'credito';
+  let pct = 0;
+  if (forma.value === 'debito') pct = TAXAS.debito;
+  else if (forma.value === 'credito') pct = TAXAS['c' + $('#pgr-par').value];
+  let v = 0; try { v = cent($('#pgr-v').value); } catch (e) {}
+  const taxa = Math.round(v * pct / 100);
+  $('#pgr-prev').innerHTML = pct ? `Taxa da maquininha: <b>${String(pct).replace('.', ',')}%</b> = ${reais(taxa)} · você fica com <b>${reais(v - taxa)}</b>` : 'Sem taxa para esta forma de pagamento.';
+}
+document.addEventListener('input', e => { if (e.target.closest('#pgr-v')) atualizarTaxaPg(); });
+document.addEventListener('change', e => { if (e.target.closest('#pgr-forma, #pgr-par')) atualizarTaxaPg(); });
+// reduz foto (lado maior 1600px, JPEG) para poupar espaço no servidor; PDF e imagens pequenas seguem como estão
+async function prepararArquivo(f) {
+  if (!f.type.startsWith('image/') || f.type === 'image/gif') return f;
+  try {
+    const bmp = await createImageBitmap(f), esc_ = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+    if (esc_ === 1 && f.size < 400 * 1024) return f;
+    const cv = document.createElement('canvas'); cv.width = Math.round(bmp.width * esc_); cv.height = Math.round(bmp.height * esc_);
+    cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
+    const blob = await new Promise(ok => cv.toBlob(ok, 'image/jpeg', 0.82));
+    return blob && blob.size < f.size ? new File([blob], f.name.replace(/\.[^.]+$/, '') + '.jpg', {type: 'image/jpeg'}) : f;
+  } catch (e) { return f; }
+}
 const reabrir = async () => { const id = REG.id; await dlgRegistro(id); rota(); };
 const ACOES = {
   fechar: () => fechar(),
@@ -484,10 +544,54 @@ const ACOES = {
     catch (e) { erroDlg(e.message); }
   },
   async 'pg-receber'(b) {
-    const total = Number(b.dataset.total), r = prompt('Total recebido deste pagamento (R$). Previsto: ' + reais(total), emReais(Number(b.dataset.rec) || total));
-    if (r === null) return;
-    try { await api('POST', `/api/n/pagamentos/${b.dataset.id}/receber`, {total_recebido_cent: cent(r)}); await reabrir(); } catch (e) { aviso(e.message); }
+    const total = Number(b.dataset.total), jaRec = Number(b.dataset.rec) || 0;
+    if (!TAXAS) TAXAS = (await api('GET', '/api/n/taxas')).taxas;
+    abrir(`<h2>Receber pagamento</h2><p class="sub" style="margin-bottom:6px">Previsto: ${reais(total)}</p>
+      <div class="form"><div><label for="pgr-v">Total recebido (R$)</label><input id="pgr-v" inputmode="decimal" value="${emReais(jaRec || total)}"></div>
+        <div><label for="pgr-forma">Forma de pagamento</label><select id="pgr-forma">${Object.entries(FORMAS).map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}</select></div>
+        <div id="pgr-par-box" hidden><label for="pgr-par">Parcelas no crédito</label><select id="pgr-par">${Array.from({length: 12}, (_, i) => `<option value="${i + 1}">${i + 1}x</option>`).join('')}</select></div>
+        <div><label for="pgr-data">Data do recebimento</label><input id="pgr-data" type="date"></div></div>
+      <p class="taxa-prev" id="pgr-prev"></p>
+      <div class="rod"><button class="btn sec" data-act="pg-cancelar">Voltar</button><button class="btn" data-act="pg-confirmar" data-id="${b.dataset.id}">Confirmar recebimento</button></div>`);
+    atualizarTaxaPg();
   },
+  'pg-cancelar': () => reabrir(),
+  async 'pg-confirmar'(b) {
+    try {
+      const forma = $('#pgr-forma').value;
+      await api('POST', `/api/n/pagamentos/${b.dataset.id}/receber`, {total_recebido_cent: cent($('#pgr-v').value), forma,
+        parcelas: forma === 'credito' ? Number($('#pgr-par').value) : null, data: $('#pgr-data').value || null});
+      aviso('Recebimento registrado.'); await reabrir();
+    } catch (e) { erroDlg(e.message); }
+  },
+  async 'custo-add'() {
+    try {
+      await api('POST', `/api/n/clientes/${CLI.id}/custos`, {categoria: $('#cu-cat').value, valor_cent: cent($('#cu-v').value), descricao: $('#cu-d').value,
+        data: $('#cu-data').value || null, registro_id: $('#cu-reg').value ? Number($('#cu-reg').value) : null});
+      aviso('Custo lançado.'); rota();
+    } catch (e) { aviso(e.message); }
+  },
+  async 'custo-del'(b) { if (!confirm('Remover este custo?')) return; await api('DELETE', '/api/n/custos/' + b.dataset.id); rota(); },
+  async 'taxas-salvar'() {
+    const corpo = {debito: $('#tx-debito').value};
+    for (let i = 1; i <= 12; i++) corpo['c' + i] = $('#tx-c' + i).value;
+    try { TAXAS = (await api('PUT', '/api/n/taxas', corpo)).taxas; aviso('Taxas salvas.'); rota(); } catch (e) { aviso(e.message); }
+  },
+  async 'anexo-add'(b) {
+    const inp = $('#ax-arq'), f = inp.files[0];
+    if (!f) { aviso('Escolha um arquivo.'); return; }
+    b.disabled = true;
+    try {
+      const arq = await prepararArquivo(f);
+      const fd = new FormData(); fd.append('arquivo', arq, arq.name);
+      const r = await fetch(`/api/n/registros/${REG.id}/anexos`, {method: 'POST', headers: {'X-CSRF': CSRF}, body: fd});
+      let d = {}; try { d = await r.json(); } catch (e) {}
+      if (r.status === 413) throw new Error('Arquivo grande demais (máximo 10 MB).');
+      if (!r.ok || d.ok === false) throw new Error(d.erro || 'Erro ' + r.status);
+      aviso('Arquivo anexado.'); await reabrir();
+    } catch (e) { aviso(e.message); b.disabled = false; }
+  },
+  async 'anexo-del'(b) { if (!confirm('Remover este arquivo?')) return; await api('DELETE', '/api/n/anexos/' + b.dataset.id); await reabrir(); },
   async 'pg-del'(b) { await api('DELETE', '/api/n/pagamentos/' + b.dataset.id); await reabrir(); },
   async 'msg-gerar'() { mostrarMsg(await api('POST', '/api/n/mensagem', {modelo: $('#m-mod').value, cliente_id: REG.cliente_id, registro_id: REG.id})); },
   async 'msg-ia'(b) {
