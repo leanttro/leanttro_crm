@@ -494,6 +494,7 @@ class Conta(db.Model):
     nome = db.Column(db.String(120), nullable=False)
     nicho = db.Column(db.String(40), nullable=False)                     # pasta em nichos/
     ativo = db.Column(db.Boolean, nullable=False, default=True)          # False = suspensa: ninguém da conta entra
+    taxas = db.Column(db.JSON)                                           # % da maquininha: {"debito": 1.9, "c1": 3.4, ..., "c12": 12.5}
     criado_em = db.Column(db.DateTime, nullable=False, default=agora)
 
 
@@ -525,6 +526,9 @@ class RegistroPagamento(db.Model):
     valor_recebido_cent = db.Column(db.Integer, nullable=False, default=0)
     vence_em = db.Column(db.Date, nullable=False)
     pago_em = db.Column(db.Date)
+    forma = db.Column(db.String(12))                                     # pix | dinheiro | debito | credito | boleto | outro
+    parcelas = db.Column(db.Integer)                                     # só para crédito (1 = à vista)
+    taxa_cent = db.Column(db.Integer, nullable=False, default=0)         # taxa da maquininha sobre o recebido
 
     @property
     def status(self):
@@ -544,6 +548,34 @@ class RegistroHistorico(db.Model):
     texto = db.Column(db.Text, nullable=False, default="")
     status_de = db.Column(db.String(30))
     status_para = db.Column(db.String(30))
+    criado_em = db.Column(db.DateTime, nullable=False, default=agora)
+
+
+class CustoCliente(db.Model):
+    """Gasto que você teve com UM cliente (material, laboratório, frete...). Serve para ver o lucro de verdade."""
+    __tablename__ = "custos_cliente"
+    id = db.Column(db.Integer, primary_key=True)
+    conta_id = db.Column(db.Integer, db.ForeignKey("contas.id"), nullable=False, index=True)
+    owner_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    cliente_id = db.Column(db.Integer, db.ForeignKey("clientes.id", ondelete="CASCADE"), nullable=False, index=True)
+    registro_id = db.Column(db.Integer, db.ForeignKey("registros.id", ondelete="SET NULL"), index=True)   # opcional
+    categoria = db.Column(db.String(40), nullable=False, default="Outros")
+    descricao = db.Column(db.String(160), nullable=False, default="")
+    valor_cent = db.Column(db.Integer, nullable=False)
+    data = db.Column(db.Date, nullable=False, default=hoje)
+    criado_em = db.Column(db.DateTime, nullable=False, default=agora)
+
+
+class Anexo(db.Model):
+    """Arquivo (foto/PDF da receita etc.) preso a um registro. O arquivo fica em DATA_DIR/uploads/contas/<conta>/, não no banco."""
+    __tablename__ = "anexos"
+    id = db.Column(db.Integer, primary_key=True)
+    conta_id = db.Column(db.Integer, db.ForeignKey("contas.id"), nullable=False, index=True)
+    registro_id = db.Column(db.Integer, db.ForeignKey("registros.id", ondelete="CASCADE"), nullable=False, index=True)
+    nome = db.Column(db.String(200), nullable=False)
+    arquivo = db.Column(db.String(300), nullable=False)                  # relativo a DATA_DIR/uploads
+    mime = db.Column(db.String(60), nullable=False)
+    tamanho = db.Column(db.Integer, nullable=False, default=0)
     criado_em = db.Column(db.DateTime, nullable=False, default=agora)
 
 
@@ -719,6 +751,44 @@ def cliente_de_lead(lead):
 # HELPERS: validação, dedupe, Serper, Groq, PDF de proposta
 # ═══════════════════════════════════════════════════════════════════════════
 LEAD_ORIGENS = ("serper", "manual", "indicacao")
+FORMAS_PG = ("pix", "dinheiro", "debito", "credito", "boleto", "outro")
+EXT_ANEXO = {".pdf": "application/pdf", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
+MAX_ANEXOS_REGISTRO = 10
+
+
+def _assinatura_ok(ext, cab):
+    """Confere os primeiros bytes: não basta o nome terminar em .pdf."""
+    if ext == ".pdf":
+        return cab.startswith(b"%PDF")
+    if ext == ".png":
+        return cab.startswith(b"\x89PNG")
+    if ext in (".jpg", ".jpeg"):
+        return cab.startswith(b"\xff\xd8\xff")
+    if ext == ".webp":
+        return cab[:4] == b"RIFF" and cab[8:12] == b"WEBP"
+    return False
+
+
+def taxas_da_conta(conta):
+    """Taxas em % (float). Qualquer chave ausente = 0. Chaves: debito, c1..c12."""
+    base = {"debito": 0.0, **{f"c{i}": 0.0 for i in range(1, 13)}}
+    for k, v in ((conta.taxas if conta else None) or {}).items():
+        if k in base and isinstance(v, (int, float)) and not isinstance(v, bool) and 0 <= v <= 100:
+            base[k] = float(v)
+    return base
+
+
+def taxa_do_pagamento(conta, forma, parcelas, valor_cent):
+    t = taxas_da_conta(conta)
+    if forma == "debito":
+        pct = t["debito"]
+    elif forma == "credito":
+        pct = t[f"c{min(max(int(parcelas or 1), 1), 12)}"]
+    else:
+        pct = 0.0
+    return round(valor_cent * pct / 100)
+
+
 EXT_PERMITIDAS = {".pdf", ".png", ".jpg", ".jpeg", ".docx", ".xlsx", ".pptx", ".txt", ".csv", ".zip", ".mp4"}
 
 
@@ -1081,7 +1151,7 @@ def _validar_manifesto(m):
                 raise ValueError(f"{onde}, lembrete #{j}: 'dias_antes' deve ser inteiro de 0 a 365.")
             lembretes.append(dict(campo=lem["campo"], dias_antes=dias,
                                   titulo=str(lem.get("titulo") or f"{t.get('rotulo') or tid}: {{titulo}} — {{nome}}")[:200]))
-        tipos.append(dict(id=tid, rotulo=str(t.get("rotulo") or tid)[:60],
+        tipos.append(dict(id=tid, anexos=bool(t.get("anexos")), rotulo=str(t.get("rotulo") or tid)[:60],
                           rotulo_plural=str(t.get("rotulo_plural") or (t.get("rotulo") or tid) + "s")[:60],
                           campos=campos, etapas=etapas, etapas_finais=finais, data_ref=data_ref, valor=valor,
                           titulo=titulo, pagamentos=pg, lembretes=lembretes))
@@ -1320,6 +1390,10 @@ def migrar():
     _add_col("registros", "conta_id", "INTEGER REFERENCES contas(id)")
     _add_col("atividades", "registro_id", "INTEGER REFERENCES registros(id) ON DELETE CASCADE")
     _add_col("atividades", "auto_chave", "VARCHAR(80)")
+    _add_col("contas", "taxas", "JSON")
+    _add_col("registro_pagamentos", "forma", "VARCHAR(12)")
+    _add_col("registro_pagamentos", "parcelas", "INTEGER")
+    _add_col("registro_pagamentos", "taxa_cent", "INTEGER NOT NULL DEFAULT 0")
 
 
 def criar_app():
@@ -2709,7 +2783,15 @@ def criar_app():
 
     def _n_pg_json(p):
         return dict(id=p.id, registro_id=p.registro_id, descricao=p.descricao, valor_cent=p.valor_cent,
-                    recebido_cent=p.valor_recebido_cent, vence_em=_fmt(p.vence_em), pago_em=_fmt(p.pago_em), status=p.status)
+                    recebido_cent=p.valor_recebido_cent, vence_em=_fmt(p.vence_em), pago_em=_fmt(p.pago_em), status=p.status,
+                    forma=p.forma, parcelas=p.parcelas, taxa_cent=p.taxa_cent or 0)
+
+    def _n_custo_json(x):
+        return dict(id=x.id, cliente_id=x.cliente_id, registro_id=x.registro_id, categoria=x.categoria,
+                    descricao=x.descricao, valor_cent=x.valor_cent, data=_fmt(x.data))
+
+    def _n_anexo_json(a):
+        return dict(id=a.id, nome=a.nome, mime=a.mime, tamanho=a.tamanho, em=_fmt(a.criado_em))
 
     def _n_reg_json(r, cliente_nome=None):
         return dict(id=r.id, tipo=r.tipo, cliente_id=r.cliente_id, cliente_nome=cliente_nome, titulo=r.titulo,
@@ -2783,8 +2865,18 @@ def criar_app():
             select(func.coalesce(func.sum(RegistroPagamento.valor_cent - RegistroPagamento.valor_recebido_cent), 0))
             .select_from(RegistroPagamento).join(Registro, Registro.id == RegistroPagamento.registro_id)
             .where(Registro.cliente_id == c.id, RegistroPagamento.valor_recebido_cent < RegistroPagamento.valor_cent))
+        recebido, taxas = db.session.execute(
+            select(func.coalesce(func.sum(RegistroPagamento.valor_recebido_cent), 0),
+                   func.coalesce(func.sum(RegistroPagamento.taxa_cent), 0))
+            .select_from(RegistroPagamento).join(Registro, Registro.id == RegistroPagamento.registro_id)
+            .where(Registro.cliente_id == c.id)).one()
+        custos = list(db.session.scalars(select(CustoCliente).where(CustoCliente.cliente_id == c.id)
+                                         .order_by(CustoCliente.data.desc(), CustoCliente.id.desc()).limit(300)))
+        total_custos = sum(x.valor_cent for x in custos)
         return jsonify(ok=True, cliente=_n_cli_json(c), registros=[_n_reg_json(r, c.empresa) for r in regs],
-                       a_receber_cent=int(a_receber))
+                       a_receber_cent=int(a_receber), custos=[_n_custo_json(x) for x in custos],
+                       lucro=dict(recebido_cent=int(recebido), taxas_cent=int(taxas), custos_cent=total_custos,
+                                  liquido_cent=int(recebido) - int(taxas) - total_custos))
 
     @app.put("/api/n/clientes/<int:cid>")
     @login_obrigatorio
@@ -2869,7 +2961,9 @@ def criar_app():
         hist = db.session.scalars(select(RegistroHistorico).where(RegistroHistorico.registro_id == r.id)
                                   .order_by(RegistroHistorico.id.desc()).limit(50))
         c = db.session.get(Cliente, r.cliente_id)
+        anexos = db.session.scalars(select(Anexo).where(Anexo.registro_id == r.id).order_by(Anexo.id))
         return jsonify(ok=True, registro=_n_reg_json(r, c.empresa), cliente=_n_cli_json(c),
+                       anexos=[_n_anexo_json(a) for a in anexos],
                        pagamentos=[_n_pg_json(p) for p in r.pagamentos],
                        historico=[dict(tipo=h.tipo, texto=h.texto, de=h.status_de, para=h.status_para,
                                        em=_fmt(h.criado_em)) for h in hist])
@@ -2906,8 +3000,11 @@ def criar_app():
     @login_obrigatorio
     def n_registro_apagar(rid):
         r = _n_registro(rid)
+        arquivos = [a.arquivo for a in db.session.scalars(select(Anexo).where(Anexo.registro_id == r.id))]
         db.session.delete(r)
         db.session.commit()
+        for nome in arquivos:
+            (DATA_DIR / "uploads" / nome).unlink(missing_ok=True)
         return jsonify(ok=True)
 
     @app.post("/api/n/registros/<int:rid>/nota")
@@ -2920,6 +3017,124 @@ def criar_app():
             return _erro(str(e))
         db.session.add(RegistroHistorico(registro_id=r.id, user_id=usuario_atual().id, tipo="nota", texto=txt))
         r.atualizado_em = agora()
+        db.session.commit()
+        return jsonify(ok=True)
+
+
+    # ── taxas da maquininha (por conta) ────────────────────────────────────
+    @app.get("/api/n/taxas")
+    @login_obrigatorio
+    def n_taxas():
+        return jsonify(ok=True, taxas=taxas_da_conta(conta_do(usuario_atual())))
+
+    @app.put("/api/n/taxas")
+    @admin_obrigatorio
+    def n_taxas_salvar():
+        conta, d = conta_do(usuario_atual()), _json()
+        if not conta:
+            abort(404)
+        novo = taxas_da_conta(conta)
+        try:
+            for k in novo:
+                if k in d and d[k] not in (None, ""):
+                    v = float(str(d[k]).replace(",", "."))
+                    if not math.isfinite(v) or not 0 <= v <= 100:
+                        raise ValueError("Cada taxa deve estar entre 0% e 100%.")
+                    novo[k] = round(v, 2)
+        except ValueError as e:
+            return _erro(str(e) if "taxa" in str(e) else "Taxa inválida.")
+        conta.taxas = novo
+        db.session.commit()
+        return jsonify(ok=True, taxas=novo)
+
+    # ── custos por cliente ─────────────────────────────────────────────────
+    @app.post("/api/n/clientes/<int:cid>/custos")
+    @login_obrigatorio
+    def n_custo_criar(cid):
+        c, d, u = _n_cliente(cid), _json(), usuario_atual()
+        try:
+            valor = _centavos(d.get("valor_cent"), "Valor")
+            if valor <= 0:
+                raise ValueError("Informe um valor maior que zero.")
+            rid = d.get("registro_id")
+            if rid not in (None, ""):
+                if _n_registro(_int_id(rid, "Registro")).cliente_id != c.id:
+                    raise ValueError("Esse registro é de outro cadastro.")
+            x = CustoCliente(conta_id=u.conta_id, owner_id=u.id, cliente_id=c.id, registro_id=rid or None,
+                             categoria=_txt(d, "categoria", 40) or "Outros", descricao=_txt(d, "descricao", 160) or "",
+                             valor_cent=valor, data=_data(d.get("data")) or hoje())
+            db.session.add(x)
+            db.session.commit()
+        except ValueError as e:
+            db.session.rollback()
+            return _erro(str(e))
+        return jsonify(ok=True, custo=_n_custo_json(x))
+
+    @app.delete("/api/n/custos/<int:xid>")
+    @login_obrigatorio
+    def n_custo_apagar(xid):
+        x = db.session.get(CustoCliente, xid)
+        if not x or x.conta_id != usuario_atual().conta_id:
+            abort(404)
+        _n_cliente(x.cliente_id)                    # herda a regra de visibilidade
+        db.session.delete(x)
+        db.session.commit()
+        return jsonify(ok=True)
+
+    # ── anexos do registro (foto/PDF da receita) ───────────────────────────
+    @app.post("/api/n/registros/<int:rid>/anexos")
+    @login_obrigatorio
+    def n_anexo_criar(rid):
+        r, u = _n_registro(rid), usuario_atual()
+        t = _tipos().get(r.tipo)
+        if not t or not t["anexos"]:
+            return _erro("Este tipo de registro não aceita arquivos.", 400)
+        arq = request.files.get("arquivo")
+        if not arq or not arq.filename:
+            return _erro("Escolha um arquivo.")
+        ext = Path(arq.filename).suffix.lower()
+        if ext not in EXT_ANEXO:
+            return _erro("Envie PDF, PNG, JPG ou WEBP.")
+        if db.session.scalar(select(func.count()).select_from(Anexo).where(Anexo.registro_id == r.id)) >= MAX_ANEXOS_REGISTRO:
+            return _erro(f"Limite de {MAX_ANEXOS_REGISTRO} arquivos por registro.")
+        cab = arq.stream.read(16)
+        arq.stream.seek(0)
+        if not _assinatura_ok(ext, cab):
+            return _erro("O conteúdo não parece ser um " + ext[1:].upper() + " de verdade.")
+        pasta = DATA_DIR / "uploads" / "contas" / str(u.conta_id)
+        pasta.mkdir(parents=True, exist_ok=True)
+        rel = f"contas/{u.conta_id}/{secrets.token_hex(12)}{ext}"
+        arq.save(DATA_DIR / "uploads" / rel)
+        a = Anexo(conta_id=u.conta_id, registro_id=r.id, nome=secure_filename(arq.filename)[:200] or f"arquivo{ext}",
+                  arquivo=rel, mime=EXT_ANEXO[ext], tamanho=(DATA_DIR / "uploads" / rel).stat().st_size)
+        db.session.add(a)
+        db.session.add(RegistroHistorico(registro_id=r.id, user_id=u.id, tipo="nota", texto=f"Arquivo anexado: {a.nome}"))
+        db.session.commit()
+        return jsonify(ok=True, anexo=_n_anexo_json(a))
+
+    def _n_anexo(aid):
+        a = db.session.get(Anexo, aid)
+        if not a or a.conta_id != usuario_atual().conta_id:
+            abort(404)
+        _n_registro(a.registro_id)                   # herda a regra de visibilidade
+        return a
+
+    @app.get("/api/n/anexos/<int:aid>")
+    @login_obrigatorio
+    def n_anexo_ver(aid):
+        a = _n_anexo(aid)
+        resp = send_from_directory(DATA_DIR / "uploads", a.arquivo, mimetype=a.mime, download_name=a.nome)
+        resp.headers["X-Content-Type-Options"] = "nosniff"
+        resp.headers["Content-Security-Policy"] = "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox"
+        resp.headers["Cache-Control"] = "private, no-store"
+        return resp
+
+    @app.delete("/api/n/anexos/<int:aid>")
+    @login_obrigatorio
+    def n_anexo_apagar(aid):
+        a = _n_anexo(aid)
+        (DATA_DIR / "uploads" / a.arquivo).unlink(missing_ok=True)
+        db.session.delete(a)
         db.session.commit()
         return jsonify(ok=True)
 
@@ -2960,8 +3175,19 @@ def criar_app():
             data = _data(d.get("data"))
         except ValueError as e:
             return _erro(str(e))
+        forma = d.get("forma") or None
+        if forma is not None and forma not in FORMAS_PG:
+            return _erro("Forma de pagamento inválida.")
+        try:
+            parcelas = int(d.get("parcelas") or 1) if forma == "credito" else None
+        except (TypeError, ValueError):
+            return _erro("Número de parcelas inválido.")
+        if parcelas is not None and not 1 <= parcelas <= 12:
+            return _erro("Parcelas: de 1 a 12.")
         p.valor_recebido_cent = total                      # define o TOTAL recebido (aceita parcial)
         p.pago_em = (data or hoje()) if total > 0 else None
+        p.forma, p.parcelas = (forma, parcelas) if total > 0 else (None, None)
+        p.taxa_cent = taxa_do_pagamento(conta_do(usuario_atual()), forma, parcelas, total) if total > 0 else 0
         db.session.commit()
         return jsonify(ok=True, pagamento=_n_pg_json(p))
 
@@ -3095,6 +3321,11 @@ def criar_app():
         financeiro = dict(
             previsto_mes_cent=soma(P.valor_cent, P.vence_em >= mes_ini, P.vence_em < mes_fim),
             recebido_mes_cent=soma(P.valor_recebido_cent, P.pago_em >= mes_ini, P.pago_em < mes_fim),
+            taxas_mes_cent=soma(P.taxa_cent, P.pago_em >= mes_ini, P.pago_em < mes_fim),
+            custos_mes_cent=int(db.session.scalar(_n_visivel(
+                select(func.coalesce(func.sum(CustoCliente.valor_cent), 0)).select_from(CustoCliente)
+                .join(Cliente, Cliente.id == CustoCliente.cliente_id)
+                .where(CustoCliente.data >= mes_ini, CustoCliente.data < mes_fim), Cliente))),
             em_atraso_cent=soma(P.valor_cent - P.valor_recebido_cent, P.vence_em < hj, P.valor_recebido_cent < P.valor_cent),
             a_receber_cent=soma(P.valor_cent - P.valor_recebido_cent, P.valor_recebido_cent < P.valor_cent))
 
