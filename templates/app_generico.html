@@ -156,11 +156,14 @@ const chipPg = s => `<span class="chip ${s === 'pago' ? 'ok' : s === 'atrasado' 
 const chipSt = (t, s) => `<span class="chip ${t && t.etapas_finais.includes(s) ? 'ok' : ''}">${esc(s)}</span>`;
 
 /* ---------- formulários gerados do manifesto ---------- */
-function campoHTML(c, v, pre) {
+function campoHTML(c, v, pre, produtos = []) {
   const id = pre + c.chave, val = v ?? '';
   const ph = c.placeholder ? ` placeholder="${esc(c.placeholder)}"` : '';
   let ctl;
-  if (c.tipo === 'textolongo') ctl = `<textarea id="${id}" rows="3" maxlength="${c.max || 4000}"${ph}>${esc(val)}</textarea>`;
+  if (pre === 'rg-' && c.chave === 'produto') {
+    ctl = `<select id="${id}"${c.obrigatorio ? ' required' : ''}><option value="">${produtos.length ? 'Selecione um produto' : 'Nenhum produto cadastrado'}</option>${val && !produtos.some(p => p.nome === val) ? `<option value="${esc(val)}" selected>${esc(val)} (produto anterior)</option>` : ''}${produtos.map(p => `<option value="${esc(p.nome)}" ${p.nome === val ? 'selected' : ''}>${esc(p.nome)} · ${reais(p.preco_venda_cent)}${p.unidade_venda === 'cento' ? ' / cento' : ' / unidade'}</option>`).join('')}</select>`;
+  }
+  else if (c.tipo === 'textolongo') ctl = `<textarea id="${id}" rows="3" maxlength="${c.max || 4000}"${ph}>${esc(val)}</textarea>`;
   else if (c.tipo === 'select') ctl = `<select id="${id}"><option value=""></option>${c.opcoes.map(o => `<option ${o === val ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
   else if (c.tipo === 'data') ctl = `<input id="${id}" type="date" value="${esc(val)}">`;
   else if (c.tipo === 'booleano') ctl = `<label class="chk" style="margin-top:0"><input id="${id}" type="checkbox" ${val === true ? 'checked' : ''}> Sim</label>`;
@@ -169,11 +172,11 @@ function campoHTML(c, v, pre) {
   else ctl = `<input id="${id}" maxlength="${c.max || 200}"${ph} value="${esc(val)}">`;
   return `<div class="${c.tipo === 'textolongo' ? 'full' : ''}"><label for="${id}">${esc(c.rotulo)}${c.obrigatorio ? ' *' : ''}</label>${ctl}${c.ajuda ? `<small class="aj">${esc(c.ajuda)}</small>` : ''}</div>`;
 }
-function camposHTML(campos, dados, pre) {
+function camposHTML(campos, dados, pre, produtos = []) {
   let html = '', grupo = null;
   for (const c of campos) {
     if ((c.grupo || null) !== grupo) { grupo = c.grupo || null; if (grupo) html += `<h3 class="grp">${esc(grupo)}</h3>`; }
-    html += campoHTML(c, (dados || {})[c.chave], pre);
+    html += campoHTML(c, (dados || {})[c.chave], pre, produtos);
   }
   return html;
 }
@@ -328,6 +331,7 @@ function dlgCliente(c) {
 
 async function dlgRegistroNovo(tid, cliId) {
   const t = TIPOS[tid];
+  const produtos = t.campos.some(c => c.chave === 'produto') ? (await api('GET', '/api/n/produtos')).produtos : [];
   let seletor = '';
   if (!cliId) {
     const cl = (await api('GET', '/api/n/clientes')).clientes;
@@ -337,7 +341,8 @@ async function dlgRegistroNovo(tid, cliId) {
   const padrao = Object.fromEntries(t.campos.filter(c => c.padrao != null).map(c => [c.chave, c.padrao]));
   abrir(`<h2>Novo(a) ${esc(t.rotulo.toLowerCase())}</h2>
     <div class="form">${seletor}<div class="full"><label for="rg-st">Etapa</label><select id="rg-st">${t.etapas.map(e => `<option>${esc(e)}</option>`).join('')}</select></div>
-    ${camposHTML(t.campos, padrao, 'rg-')}</div>
+    ${camposHTML(t.campos, padrao, 'rg-', produtos)}</div>
+    ${t.campos.some(c => c.chave === 'produto') && !produtos.length ? '<p class="aviso">Cadastre um produto na página <b>Produtos</b> antes de criar esta encomenda.</p>' : ''}
     <div class="rod"><button class="btn sec" data-act="fechar">Cancelar</button><button class="btn" data-act="reg-criar" data-tipo="${tid}" data-cli="${cliId || ''}">Salvar</button></div>`);
 }
 
@@ -387,12 +392,13 @@ async function dlgProduto(id) {
 async function dlgRegistro(id) {
   const d = await api('GET', '/api/n/registros/' + id);
   const r = REG = d.registro, t = TIPOS[r.tipo], c = d.cliente;
+  const produtos = t && t.campos.some(campo => campo.chave === 'produto') ? (await api('GET', '/api/n/produtos')).produtos : [];
   if (!t) { aviso('Este tipo de registro não existe mais no manifesto.'); return; }
   const totalPg = d.pagamentos.reduce((s, p) => s + p.valor_cent, 0), recPg = d.pagamentos.reduce((s, p) => s + p.recebido_cent, 0);
   abrir(`<h2>${esc(t.rotulo)} · ${esc(r.titulo)}</h2>
     <p class="sub" style="margin-bottom:10px"><a href="#cliente/${c.id}" data-act="fechar">${esc(c.nome)}</a>${c.telefone ? ' · ' + esc(c.telefone) : ''}</p>
     <div class="form"><div class="full"><label for="rg-st">Etapa</label><select id="rg-st">${t.etapas.map(e => `<option ${e === r.status ? 'selected' : ''}>${esc(e)}</option>`).join('')}</select></div>
-      ${camposHTML(t.campos, r.dados, 'rg-')}</div>
+      ${camposHTML(t.campos, r.dados, 'rg-', produtos)}</div>
     <div class="rod"><button class="btn sec perigo" data-act="reg-apagar" data-id="${r.id}">Apagar</button><button class="btn" data-act="reg-salvar">Salvar alterações</button></div>
     ${t.pagamentos ? `<div class="sec-d"><h2>Pagamentos ${totalPg ? `<span class="chip" style="margin-left:6px">${reais(recPg)} de ${reais(totalPg)}</span>` : ''}</h2>
       ${d.pagamentos.map(p => `<div class="linha"><div>${esc(p.descricao)}<small>vence ${dataBR(p.vence_em)} · ${reais(p.valor_cent)}${p.recebido_cent ? ' · recebido ' + reais(p.recebido_cent) : ''}</small></div>
