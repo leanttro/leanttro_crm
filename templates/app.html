@@ -323,7 +323,7 @@ const VIEWS = {
         <label for="k-serper">Serper ${me.serper ? '(' + esc(me.serper) + ')' : ''}</label><input id="k-serper" type="password" autocomplete="off">
         <p style="margin:14px 0 0"><button class="btn" data-act="salvar-chaves">Salvar chaves</button></p></section>
       <section class="card"><h2>Conta</h2>
-        <p><a class="btn sec" href="/conta/senha">Trocar senha</a></p>
+        <p><a class="btn sec" href="/conta/senha">Trocar senha</a>${EU.admin ? ' <a class="btn sec" href="/admin/contas">Contas e nichos</a>' : ''}</p>
         <form method="post" action="/sair"><input type="hidden" name="csrf" value="${esc(CSRF)}"><button class="btn sec">Sair</button></form></section></div>
       ${EU.admin ? `<section class="card" style="margin-top:14px"><h2>Equipe</h2>
         <div class="form">
