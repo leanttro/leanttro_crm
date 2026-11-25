@@ -220,6 +220,8 @@ const VIEWS = {
         <div><small>Custos (mês)</small><span class="num">${reais(f.custos_mes_cent)}</span></div>
         <div><small>Lucro líquido (mês)</small><span class="num">${reais(f.recebido_mes_cent - f.taxas_mes_cent - f.custos_mes_cent)}</span></div>` : `
         <div><small>Custos (mês)</small><span class="num">${reais(f.custos_mes_cent)}</span></div>`}</div>
+      ${d.msgs_novas.length ? `<section class="card" style="margin-bottom:16px"><h2>Mensagens de ${esc(R.clientes.toLowerCase())} <span class="chip er" style="margin-left:6px">${d.msgs_novas.length}</span></h2>
+        ${d.msgs_novas.map(m => `<div class="linha clic" data-go="cliente/${m.cliente_id}"><div>${esc(m.cliente_nome)} · ${m.tipo === 'pedido' ? 'Pedido' : m.tipo === 'receita' ? 'Receita nova' : m.tipo === 'dados' ? 'Atualizou os dados' : 'Mensagem'}<small>${esc(m.texto)} · ${dataBR(m.em)}</small></div><span class="chip">Abrir</span></div>`).join('')}</section>` : ''}
       <div class="grid dois">
         <section class="card"><h2>Em andamento</h2>
           ${d.tipos.map(t => `<div class="linha clic" data-go="t-${t.id}"><div>${esc(t.rotulo_plural)}<small>${t.etapas.filter(e => !e.final && e.qtd).map(e => esc(e.etapa) + ': ' + e.qtd).join(' · ') || 'Nada em aberto'}</small></div><span class="chip">${t.em_aberto}</span></div>`).join('')}
@@ -253,6 +255,21 @@ const VIEWS = {
         <section class="card"><h2>Novo registro</h2>
           <div class="atalhos">${N.tipos_registro.map(t => `<button class="btn sec peq" data-act="reg-novo" data-tipo="${t.id}" data-cli="${c.id}">+ ${esc(t.rotulo)}</button>`).join('')}</div>
           ${d.a_receber_cent ? `<div class="kpis"><div><small>A receber deste ${esc(R.cliente.toLowerCase())}</small><span class="num">${reais(d.a_receber_cent)}</span></div></div>` : ''}</section></div>
+      <section class="card"><h2>Área do ${esc(R.cliente.toLowerCase())} (link de acesso)</h2>
+        ${d.portal.ativo ? `<p class="sub" style="margin:0 0 8px">O cliente abre este link, aceita a política de privacidade e vê receitas e pedidos, corrige os próprios dados e fala com você.
+          ${d.portal.aceite_em ? `<br><b>Aceitou a política em ${dataBR(d.portal.aceite_em)}.</b>` : '<br>Ainda não abriu o link.'}${d.portal.ultimo_acesso ? ` Último acesso: ${dataBR(d.portal.ultimo_acesso)}.` : ''}</p>
+          <input id="pt-url" readonly value="${esc(d.portal.url)}" onfocus="this.select()">
+          <div class="acoes" style="justify-content:flex-start;margin-top:10px"><button class="btn peq" data-act="portal-copiar">Copiar link</button>
+            ${d.portal.whatsapp ? `<a class="btn peq sec" href="${esc(d.portal.whatsapp)}" target="_blank" rel="noopener">Enviar no WhatsApp</a>` : ''}
+            <button class="btn peq sec" data-act="portal-gerar" data-novo="1">Gerar novo link</button>
+            <button class="btn peq sec perigo" data-act="portal-del">Desativar</button></div>`
+        : `<p class="sub" style="margin:0 0 10px">Gere um link pessoal para o ${esc(R.cliente.toLowerCase())} ver os próprios dados, acompanhar pedidos e falar com você.</p>
+          <button class="btn peq" data-act="portal-gerar">Gerar link de acesso</button>`}</section>
+      <section class="card"><h2>Mensagens ${d.nao_lidas ? `<span class="chip er" style="margin-left:6px">${d.nao_lidas} nova${d.nao_lidas > 1 ? 's' : ''}</span>` : ''}</h2>
+        ${d.mensagens.map(m => `<div class="linha" style="align-items:flex-start"><div>${m.de === 'cliente' ? '' : '<span class="chip" style="margin-right:6px">Você</span>'}${m.tipo !== 'mensagem' ? `<span class="chip ${m.nova ? 'er' : ''}" style="margin-right:6px">${m.tipo === 'pedido' ? 'Pedido' : m.tipo === 'receita' ? 'Receita nova' : 'Dados'}</span>` : ''}${esc(m.texto)}
+          ${m.tem_arquivo ? `<br><a href="/api/n/pmsg/${m.id}/arquivo" target="_blank" rel="noopener">📎 ${esc(m.nome || 'arquivo')}</a>` : ''}<small>${m.de === 'cliente' ? esc(c.nome.split(' ')[0]) : 'Você'} · ${dataBR(m.em)}${horaBR(m.em)}</small></div></div>`).join('') || vazio('Nenhuma mensagem ainda.')}
+        <div class="sec-d"><label for="pm-txt">Responder</label><textarea id="pm-txt" rows="2" maxlength="2000" placeholder="${d.portal.ativo ? 'O cliente vê esta resposta na área dele.' : 'Gere o link de acesso para o cliente receber as respostas.'}"></textarea>
+          <p style="margin:10px 0 0"><button class="btn peq" data-act="pmsg-enviar">Enviar resposta</button></p></div></section>
       <section class="card"><h2>Custos e lucro deste ${esc(R.cliente.toLowerCase())}</h2>
         <div class="kpis" style="margin-bottom:12px">
           <div><small>Recebido</small><span class="num">${reais(d.lucro.recebido_cent)}</span></div>
@@ -270,6 +287,7 @@ const VIEWS = {
           <p style="margin:12px 0 0"><button class="btn peq" data-act="custo-add">Lançar custo</button></p></div></section>
       <section class="card"><h2>Histórico</h2>
         ${d.registros.map(r => `<div class="linha clic" data-act="reg-abrir" data-id="${r.id}"><div>${esc(TIPOS[r.tipo]?.rotulo || r.tipo)} · ${esc(r.titulo)}<small>${dataBR(r.data_ref)}${r.valor_cent ? ' · ' + reais(r.valor_cent) : ''}</small></div>${chipSt(TIPOS[r.tipo], r.status)}</div>`).join('') || vazio('Nenhum registro ainda.')}</section>`;
+    if (d.nao_lidas) api('POST', `/api/n/clientes/${c.id}/mensagens/lidas`).catch(() => {});
   },
 
   async lista(el, tid) {
@@ -590,6 +608,22 @@ const ACOES = {
       if (!r.ok || d.ok === false) throw new Error(d.erro || 'Erro ' + r.status);
       aviso('Arquivo anexado.'); await reabrir();
     } catch (e) { aviso(e.message); b.disabled = false; }
+  },
+  async 'portal-gerar'(b) {
+    if (b.dataset.novo && !confirm('Gerar um novo link? O link atual deixa de funcionar.')) return;
+    await api('POST', `/api/n/clientes/${CLI.id}/portal`); aviso('Link gerado.'); rota();
+  },
+  async 'portal-del'() {
+    if (!confirm('Desativar o acesso? O link atual deixa de funcionar.')) return;
+    await api('DELETE', `/api/n/clientes/${CLI.id}/portal`); aviso('Acesso desativado.'); rota();
+  },
+  async 'portal-copiar'() {
+    const url = $('#pt-url').value;
+    try { await navigator.clipboard.writeText(url); aviso('Link copiado.'); } catch (e) { $('#pt-url').select(); document.execCommand('copy'); aviso('Link copiado.'); }
+  },
+  async 'pmsg-enviar'() {
+    const v = $('#pm-txt').value.trim(); if (!v) { aviso('Escreva a resposta.'); return; }
+    await api('POST', `/api/n/clientes/${CLI.id}/mensagens`, {texto: v}); aviso('Resposta enviada.'); rota();
   },
   async 'anexo-del'(b) { if (!confirm('Remover este arquivo?')) return; await api('DELETE', '/api/n/anexos/' + b.dataset.id); await reabrir(); },
   async 'pg-del'(b) { await api('DELETE', '/api/n/pagamentos/' + b.dataset.id); await reabrir(); },
