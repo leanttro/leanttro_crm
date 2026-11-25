@@ -1,0 +1,72 @@
+{
+  "id": "otica",
+  "cor": "#2563eb",
+  "nome": "CRM Ótica",
+  "modulos": ["registros", "ia"],
+  "visibilidade": "equipe",
+  "rotulos": {"cliente": "Cliente", "clientes": "Clientes", "atendente": "Atendente"},
+  "campos_cliente": [
+    {"chave": "nascimento", "rotulo": "Nascimento", "tipo": "data"},
+    {"chave": "convenio", "rotulo": "Convênio", "tipo": "texto"},
+    {"chave": "como_conheceu", "rotulo": "Como conheceu a ótica", "tipo": "select",
+     "opcoes": ["Indicação", "Instagram", "Passou na frente", "Outro"]}
+  ],
+  "tipos_registro": [
+    {
+      "id": "receita",
+      "rotulo": "Receita",
+      "rotulo_plural": "Receitas",
+      "etapas": ["Válida", "Vencida"],
+      "etapas_finais": ["Vencida"],
+      "data_ref": "data_exame",
+      "titulo": "medico",
+      "campos": [
+        {"chave": "data_exame", "rotulo": "Data do exame", "tipo": "data", "obrigatorio": true},
+        {"chave": "validade", "rotulo": "Validade da receita", "tipo": "data", "obrigatorio": true,
+         "ajuda": "O sistema avisa 30 dias antes."},
+        {"chave": "medico", "rotulo": "Médico / clínica", "tipo": "texto"},
+        {"chave": "od_esf", "rotulo": "Esférico", "tipo": "numero", "min": -30, "max": 30, "passo": 0.25, "grupo": "Olho direito (OD)"},
+        {"chave": "od_cil", "rotulo": "Cilíndrico", "tipo": "numero", "min": -30, "max": 30, "passo": 0.25, "grupo": "Olho direito (OD)"},
+        {"chave": "od_eixo", "rotulo": "Eixo", "tipo": "numero", "min": 0, "max": 180, "grupo": "Olho direito (OD)"},
+        {"chave": "oe_esf", "rotulo": "Esférico", "tipo": "numero", "min": -30, "max": 30, "passo": 0.25, "grupo": "Olho esquerdo (OE)"},
+        {"chave": "oe_cil", "rotulo": "Cilíndrico", "tipo": "numero", "min": -30, "max": 30, "passo": 0.25, "grupo": "Olho esquerdo (OE)"},
+        {"chave": "oe_eixo", "rotulo": "Eixo", "tipo": "numero", "min": 0, "max": 180, "grupo": "Olho esquerdo (OE)"},
+        {"chave": "adicao", "rotulo": "Adição", "tipo": "numero", "min": 0, "max": 5, "passo": 0.25, "grupo": "Perto"},
+        {"chave": "dnp", "rotulo": "DNP", "tipo": "texto", "grupo": "Perto", "placeholder": "ex.: 32/31"},
+        {"chave": "obs", "rotulo": "Observações", "tipo": "textolongo"}
+      ],
+      "lembretes": [
+        {"campo": "validade", "dias_antes": 30, "titulo": "Receita de {nome} vence em 30 dias — oferecer novo exame"}
+      ]
+    },
+    {
+      "id": "ordem",
+      "rotulo": "Ordem de serviço",
+      "rotulo_plural": "Ordens de serviço",
+      "etapas": ["Pedido", "No laboratório", "Pronto", "Entregue"],
+      "etapas_finais": ["Entregue"],
+      "data_ref": "previsao",
+      "valor": "total",
+      "titulo": "descricao",
+      "pagamentos": true,
+      "campos": [
+        {"chave": "descricao", "rotulo": "O que é", "tipo": "texto", "obrigatorio": true, "placeholder": "Óculos de grau — armação X"},
+        {"chave": "armacao", "rotulo": "Armação", "tipo": "texto"},
+        {"chave": "lente", "rotulo": "Lente", "tipo": "select",
+         "opcoes": ["Monofocal", "Multifocal", "Bifocal", "Solar com grau", "Lente de contato"]},
+        {"chave": "previsao", "rotulo": "Previsão de entrega", "tipo": "data"},
+        {"chave": "total", "rotulo": "Valor total", "tipo": "dinheiro", "obrigatorio": true},
+        {"chave": "obs", "rotulo": "Observações", "tipo": "textolongo"}
+      ],
+      "lembretes": [
+        {"campo": "previsao", "dias_antes": 0, "titulo": "Avisar {nome}: {titulo} está previsto para hoje"}
+      ]
+    }
+  ],
+  "mensagens": {
+    "pronto": "Oi {primeiro_nome}! Seus óculos ({titulo}) já estão prontos na {negocio}. Pode vir buscar quando quiser 😊",
+    "receita_vencendo": "Oi {primeiro_nome}, tudo bem? Sua receita vence em {validade}. Quer agendar um novo exame? — {atendente}, {negocio}",
+    "cobranca": "Oi {primeiro_nome}, passando para lembrar do restante do pagamento dos seus óculos ({valor}). Qualquer dúvida é só chamar! — {atendente}"
+  },
+  "ia": {"persona": "Você é atendente simpática de uma ótica brasileira, cordial e objetiva."}
+}
