@@ -1,6 +1,10 @@
 """Leanttro CRM — Flask + SQLAlchemy, um arquivo só.
 
+Nichos: NICHO=agencia (padrão, CRM de vendas) ou NICHO=otica|nutri|confeiteira|… → CRM focado,
+descrito por nichos/<NICHO>/nicho.json (campos, etapas, lembretes, mensagens). Ver README do nicho.
+
 Dev:   python app.py                (HOST/PORT/DEBUG por env)
+Check: python app.py check-nicho    (valida o manifesto do NICHO atual)
 Prod:  gunicorn app:app             (docker-entrypoint.sh roda `python app.py init-db` antes)
 CLI:   python app.py init-db
 Banco: SQLite em DATA_DIR/db.sqlite (Docker: volume /data). DATABASE_URL só se quiser Postgres.
@@ -11,6 +15,7 @@ import calendar
 import hashlib
 import hmac
 import json
+import math
 import os
 import re
 import secrets
@@ -18,8 +23,9 @@ import sqlite3
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache, wraps
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -28,7 +34,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from dotenv import load_dotenv
 from flask import Flask, abort, g, jsonify, redirect, render_template, request, send_from_directory, session
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import CheckConstraint, UniqueConstraint, delete, event, func, inspect, select, text
+from sqlalchemy import CheckConstraint, UniqueConstraint, and_, delete, event, func, inspect, or_, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -56,8 +62,10 @@ def _int(nome, padrao):
 DEBUG = _env("DEBUG") == "1"
 DATA_DIR = Path(_env("DATA_DIR") or (BASE_DIR / "data")).resolve()
 TZ = ZoneInfo(_env("TZ_NAME") or "America/Sao_Paulo")
-SCHEMA_VERSAO = 1
+SCHEMA_VERSAO = 2
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+NICHO = _env("NICHO") or "agencia"                 # qual CRM este deploy é (pasta em nichos/)
+NICHOS_DIR = BASE_DIR / "nichos"
 
 
 def _segredo(nome):
@@ -285,6 +293,8 @@ class Atividade(db.Model):
     titulo = db.Column(db.String(200), nullable=False)
     vence_em = db.Column(db.DateTime)
     feita_em = db.Column(db.DateTime)
+    registro_id = db.Column(db.Integer, db.ForeignKey("registros.id", ondelete="CASCADE"))   # nichos
+    auto_chave = db.Column(db.String(80))                               # lembrete automático do manifesto
 
 
 class Cliente(db.Model):
@@ -302,6 +312,7 @@ class Cliente(db.Model):
     endereco = db.Column(db.String(300))
     origem = db.Column(db.String(10), nullable=False, default="manual")  # manual | lead
     observacoes = db.Column(db.Text, nullable=False, default="")
+    dados = db.Column(db.JSON)                                          # nichos: campos_cliente do manifesto
     criado_em = db.Column(db.DateTime, nullable=False, default=agora)
 
 
@@ -463,6 +474,63 @@ class TreinamentoProgresso(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     modulo_id = db.Column(db.Integer, db.ForeignKey("treinamento_modulos.id", ondelete="CASCADE"), primary_key=True)
     concluido_em = db.Column(db.DateTime, nullable=False, default=agora)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NICHOS (CRMs focados): modelos genéricos. O que cada nicho tem de diferente
+# mora em nichos/<NICHO>/nicho.json; aqui só existe a estrutura que serve a todos.
+#   Registro            = "o que acontece com o cliente" (consulta, receita, encomenda, ordem de serviço…)
+#   RegistroPagamento   = cobranças de um registro (sinal, restante, parcelas)
+#   RegistroHistorico   = linha do tempo do registro (notas e mudanças de etapa)
+# Regra: o que se filtra/ordena/soma é coluna (status, data_ref, valor_cent); o resto vai em `dados` (JSON).
+# ═══════════════════════════════════════════════════════════════════════════
+class Registro(db.Model):
+    __tablename__ = "registros"
+    id = db.Column(db.Integer, primary_key=True)
+    owner_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey("clientes.id", ondelete="CASCADE"), nullable=False, index=True)
+    tipo = db.Column(db.String(40), nullable=False, index=True)          # id em tipos_registro do manifesto
+    titulo = db.Column(db.String(200), nullable=False, default="")       # derivado de dados[titulo]
+    status = db.Column(db.String(30), nullable=False, index=True)        # uma das etapas do tipo
+    data_ref = db.Column(db.Date, index=True)                            # derivada de dados[data_ref] (ou criação)
+    valor_cent = db.Column(db.Integer, nullable=False, default=0)        # derivado de dados[valor]
+    dados = db.Column(db.JSON, nullable=False, default=dict)
+    versao = db.Column(db.Integer, nullable=False, default=1)            # trava otimista
+    criado_em = db.Column(db.DateTime, nullable=False, default=agora)
+    atualizado_em = db.Column(db.DateTime, nullable=False, default=agora, onupdate=agora)
+    pagamentos = db.relationship("RegistroPagamento", backref="registro", cascade="all, delete-orphan",
+                                 passive_deletes=True, order_by="RegistroPagamento.vence_em")
+
+
+class RegistroPagamento(db.Model):
+    __tablename__ = "registro_pagamentos"
+    id = db.Column(db.Integer, primary_key=True)
+    registro_id = db.Column(db.Integer, db.ForeignKey("registros.id", ondelete="CASCADE"), nullable=False, index=True)
+    descricao = db.Column(db.String(120), nullable=False, default="Pagamento")
+    valor_cent = db.Column(db.Integer, nullable=False)                   # previsto
+    valor_recebido_cent = db.Column(db.Integer, nullable=False, default=0)
+    vence_em = db.Column(db.Date, nullable=False)
+    pago_em = db.Column(db.Date)
+
+    @property
+    def status(self):
+        if self.valor_recebido_cent >= self.valor_cent:
+            return "pago"
+        if self.valor_recebido_cent > 0:
+            return "parcial"
+        return "atrasado" if self.vence_em < hoje() else "pendente"
+
+
+class RegistroHistorico(db.Model):
+    __tablename__ = "registro_historico"
+    id = db.Column(db.Integer, primary_key=True)
+    registro_id = db.Column(db.Integer, db.ForeignKey("registros.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    tipo = db.Column(db.String(12), nullable=False, default="nota")      # nota | status
+    texto = db.Column(db.Text, nullable=False, default="")
+    status_de = db.Column(db.String(30))
+    status_para = db.Column(db.String(30))
+    criado_em = db.Column(db.DateTime, nullable=False, default=agora)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -829,6 +897,357 @@ def _aplicar_chaves(u, d):
         setattr(u, col, cifrar(v.strip()))
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# NICHOS: manifesto (nichos/<NICHO>/nicho.json), validação e regras genéricas
+#   NICHO=agencia (padrão) → CRM de vendas original, nada muda.
+#   NICHO=otica | nutri | confeiteira | … → CRM focado, descrito 100% pelo manifesto.
+# O manifesto é validado na subida: se estiver errado, o app não sobe e diz o motivo.
+# ═══════════════════════════════════════════════════════════════════════════
+TIPOS_CAMPO = ("texto", "textolongo", "numero", "dinheiro", "data", "select", "booleano")
+MODULOS_AGENCIA = ("vendas", "prospeccao", "projetos", "financeiro", "equipe", "ia")
+MODULOS_VALIDOS = MODULOS_AGENCIA + ("registros",)
+# prefixos de rota de cada módulo: módulo desligado = rota responde 404
+MODULO_ROTAS = {
+    "vendas": ("/api/leads", "/api/propostas", "/api/vendas", "/api/clientes", "/api/servicos", "/api/comissoes",
+               "/api/admin/servicos", "/api/admin/vendas", "/api/admin/pagamentos", "/api/admin/comissoes",
+               "/api/admin/config"),
+    "prospeccao": ("/api/prospeccao",),
+    "projetos": ("/api/projetos",),
+    "financeiro": ("/api/admin/custos", "/api/admin/financeiro"),
+    "equipe": ("/api/admin/candidatos", "/api/treinamento", "/api/admin/treinamento", "/api/materiais",
+               "/api/admin/materiais"),
+    "ia": ("/api/ia", "/api/n/ia"),
+    "registros": ("/api/n",),
+}
+CHAVE_RE = re.compile(r"^[a-z][a-z0-9_]{0,39}$")
+CHAVES_CLIENTE_FIXAS = {"id", "nome", "telefone", "email", "documento", "endereco", "observacoes", "dados"}
+MANIFESTO_AGENCIA = dict(
+    id="agencia", nome="Leanttro CRM", cor="#7943e2", modulos=list(MODULOS_AGENCIA), visibilidade="proprio",
+    rotulos=dict(cliente="Cliente", clientes="Clientes", atendente="Vendedor"),
+    campos_cliente=[], tipos_registro=[], mensagens={}, ia=dict(persona=""))
+
+
+def _validar_campos(lista, onde, reservadas=()):
+    """Valida e normaliza a lista de campos de um manifesto. Levanta ValueError dizendo ONDE está o erro."""
+    if lista is None:
+        return []
+    if not isinstance(lista, list):
+        raise ValueError(f"{onde}: 'campos' deve ser uma lista.")
+    saida, vistos = [], set()
+    for i, c in enumerate(lista, 1):
+        ref = f"{onde}, campo #{i}"
+        if not isinstance(c, dict):
+            raise ValueError(f"{ref}: deve ser um objeto.")
+        chave, tipo = c.get("chave"), c.get("tipo", "texto")
+        if not isinstance(chave, str) or not CHAVE_RE.match(chave):
+            raise ValueError(f"{ref}: 'chave' inválida (minúsculas, números e _, começando por letra).")
+        if chave in vistos or chave in reservadas:
+            raise ValueError(f"{ref}: a chave '{chave}' está repetida ou é reservada.")
+        if tipo not in TIPOS_CAMPO:
+            raise ValueError(f"{ref} ('{chave}'): tipo '{tipo}' inválido. Use: {', '.join(TIPOS_CAMPO)}.")
+        novo = dict(chave=chave, tipo=tipo, rotulo=str(c.get("rotulo") or chave.replace("_", " ").capitalize())[:80],
+                    obrigatorio=bool(c.get("obrigatorio")))
+        if tipo == "select":
+            op = c.get("opcoes")
+            if not isinstance(op, list) or not op or not all(isinstance(x, str) and x for x in op) or len(set(op)) != len(op):
+                raise ValueError(f"{ref} ('{chave}'): 'opcoes' deve ser uma lista de textos únicos.")
+            novo["opcoes"] = op
+        for k in ("min", "max", "passo"):
+            if k in c:
+                if isinstance(c[k], bool) or not isinstance(c[k], (int, float)):
+                    raise ValueError(f"{ref} ('{chave}'): '{k}' deve ser número.")
+                novo[k] = c[k]
+        for k in ("ajuda", "grupo", "placeholder"):
+            if isinstance(c.get(k), str) and c[k].strip():
+                novo[k] = c[k].strip()[:120]
+        if "padrao" in c:
+            try:
+                novo["padrao"] = _valida_valor(novo, c["padrao"])
+            except ValueError as e:
+                raise ValueError(f"{ref} ('{chave}'): padrão inválido ({e})")
+        vistos.add(chave)
+        saida.append(novo)
+    return saida
+
+
+def _validar_manifesto(m):
+    """Devolve o manifesto normalizado (com todos os defaults preenchidos) ou levanta ValueError."""
+    if not isinstance(m, dict):
+        raise ValueError("o arquivo deve conter um objeto JSON.")
+    nid = m.get("id")
+    if not isinstance(nid, str) or not re.fullmatch(r"[a-z0-9_-]{1,40}", nid):
+        raise ValueError("'id' é obrigatório (minúsculas, números, - e _).")
+    mods = m.get("modulos", ["registros", "ia"])
+    if not isinstance(mods, list) or any(x not in MODULOS_VALIDOS for x in mods):
+        raise ValueError(f"'modulos' aceita apenas: {', '.join(MODULOS_VALIDOS)}.")
+    rotulos = dict(cliente="Cliente", clientes="Clientes", atendente="Atendente")
+    if isinstance(m.get("rotulos"), dict):
+        rotulos.update({k: v.strip()[:40] for k, v in m["rotulos"].items() if isinstance(v, str) and v.strip()})
+    vis = m.get("visibilidade", "equipe")
+    if vis not in ("equipe", "proprio"):
+        raise ValueError("'visibilidade' deve ser 'equipe' (todos veem tudo) ou 'proprio'.")
+    campos_cliente = _validar_campos(m.get("campos_cliente"), "campos_cliente", CHAVES_CLIENTE_FIXAS)
+
+    tipos, ids = [], set()
+    if m.get("tipos_registro") is not None and not isinstance(m["tipos_registro"], list):
+        raise ValueError("'tipos_registro' deve ser uma lista.")
+    for i, t in enumerate(m.get("tipos_registro") or [], 1):
+        if not isinstance(t, dict):
+            raise ValueError(f"tipos_registro #{i}: deve ser um objeto.")
+        tid = t.get("id")
+        if not isinstance(tid, str) or not CHAVE_RE.match(tid) or tid in ids:
+            raise ValueError(f"tipos_registro #{i}: 'id' inválido ou repetido.")
+        ids.add(tid)
+        onde = f"tipo '{tid}'"
+        campos = _validar_campos(t.get("campos"), onde)
+        por_chave = {c["chave"]: c for c in campos}
+        etapas = t.get("etapas") or ["Aberto", "Concluído"]
+        if (not isinstance(etapas, list) or not etapas or len(set(etapas)) != len(etapas)
+                or not all(isinstance(e, str) and e.strip() and len(e) <= 30 for e in etapas)):
+            raise ValueError(f"{onde}: 'etapas' deve ser lista de textos únicos de até 30 caracteres.")
+        finais = t.get("etapas_finais") or [etapas[-1]]
+        if not isinstance(finais, list) or not all(f in etapas for f in finais):
+            raise ValueError(f"{onde}: 'etapas_finais' deve conter apenas itens de 'etapas'.")
+
+        def ligar(nome, aceitos):
+            k = t.get(nome)
+            if k is None:
+                return None
+            if k not in por_chave or por_chave[k]["tipo"] not in aceitos:
+                raise ValueError(f"{onde}: '{nome}' deve apontar para um campo do tipo {'/'.join(aceitos)}.")
+            return k
+
+        data_ref, valor, titulo = ligar("data_ref", ("data",)), ligar("valor", ("dinheiro",)), ligar("titulo", ("texto", "select"))
+        pg = t.get("pagamentos")
+        if not pg:
+            pg = None
+        elif pg is True:
+            pg = dict(sinal_pct=None)
+        elif isinstance(pg, dict):
+            sp = pg.get("sinal_pct")
+            if sp is not None and (isinstance(sp, bool) or not isinstance(sp, (int, float)) or not 0 < sp < 100):
+                raise ValueError(f"{onde}: pagamentos.sinal_pct deve estar entre 0 e 100.")
+            if sp is not None and not valor:
+                raise ValueError(f"{onde}: 'sinal_pct' exige o apontamento 'valor' (campo dinheiro).")
+            pg = dict(sinal_pct=sp)
+        else:
+            raise ValueError(f"{onde}: 'pagamentos' deve ser true ou um objeto.")
+        lems = t.get("lembretes") if t.get("lembretes") is not None else ([t["lembrete"]] if t.get("lembrete") else [])
+        if not isinstance(lems, list):
+            raise ValueError(f"{onde}: 'lembretes' deve ser uma lista.")
+        lembretes = []
+        for j, lem in enumerate(lems, 1):
+            if not isinstance(lem, dict) or lem.get("campo") not in por_chave or por_chave[lem["campo"]]["tipo"] != "data":
+                raise ValueError(f"{onde}, lembrete #{j}: 'campo' deve apontar para um campo do tipo data.")
+            dias = lem.get("dias_antes", 0)
+            if isinstance(dias, bool) or not isinstance(dias, int) or not 0 <= dias <= 365:
+                raise ValueError(f"{onde}, lembrete #{j}: 'dias_antes' deve ser inteiro de 0 a 365.")
+            lembretes.append(dict(campo=lem["campo"], dias_antes=dias,
+                                  titulo=str(lem.get("titulo") or f"{t.get('rotulo') or tid}: {{titulo}} — {{nome}}")[:200]))
+        tipos.append(dict(id=tid, rotulo=str(t.get("rotulo") or tid)[:60],
+                          rotulo_plural=str(t.get("rotulo_plural") or (t.get("rotulo") or tid) + "s")[:60],
+                          campos=campos, etapas=etapas, etapas_finais=finais, data_ref=data_ref, valor=valor,
+                          titulo=titulo, pagamentos=pg, lembretes=lembretes))
+    if "registros" in mods and not tipos:
+        raise ValueError("o módulo 'registros' precisa de ao menos um item em 'tipos_registro'.")
+    msgs = m.get("mensagens") or {}
+    if not isinstance(msgs, dict) or not all(CHAVE_RE.match(str(k)) and isinstance(v, str) for k, v in msgs.items()):
+        raise ValueError("'mensagens' deve mapear chave → texto (a chave usa minúsculas, números e _).")
+    ia = m.get("ia") or {}
+    if not isinstance(ia, dict) or not isinstance(ia.get("persona", ""), str):
+        raise ValueError("'ia' deve ser um objeto com 'persona' em texto.")
+    cor = m.get("cor", "#7943e2")
+    if not isinstance(cor, str) or not re.fullmatch(r"#[0-9a-fA-F]{6}", cor):
+        raise ValueError("'cor' deve ser um hexadecimal como #7943e2.")
+    return dict(id=nid, nome=str(m.get("nome") or nid)[:60], cor=cor, modulos=list(mods), visibilidade=vis, rotulos=rotulos,
+                campos_cliente=campos_cliente, tipos_registro=tipos, mensagens=msgs,
+                ia=dict(persona=ia.get("persona", "")[:300]))
+
+
+def carregar_nicho(nicho):
+    arq = NICHOS_DIR / nicho / "nicho.json"
+    if not re.fullmatch(r"[a-z0-9_-]{1,40}", nicho):
+        raise SystemExit(f"NICHO '{nicho}' inválido (use minúsculas, números, - e _).")
+    if not arq.is_file():
+        if nicho == "agencia":
+            return MANIFESTO_AGENCIA
+        raise SystemExit(f"Nicho '{nicho}' não encontrado. Crie o arquivo {arq}")
+    try:
+        return _validar_manifesto(json.loads(arq.read_text("utf-8")))
+    except ValueError as e:
+        raise SystemExit(f"Erro em {arq}: {e}")
+
+
+def _valida_valor(c, v):
+    """Valida UM valor contra a definição do campo. Vazio → None (campo some do JSON)."""
+    if v is None or (isinstance(v, str) and not v.strip()):
+        return None
+    t, nome = c["tipo"], c["rotulo"]
+    if t in ("texto", "textolongo"):
+        if not isinstance(v, str):
+            raise ValueError(f"{nome} inválido.")
+        v = v.strip()
+        lim = int(c.get("max") or (200 if t == "texto" else 4000))
+        if len(v) > lim:
+            raise ValueError(f"{nome} passa de {lim} caracteres.")
+        return v
+    if t == "numero":
+        if isinstance(v, str):
+            try:
+                v = float(v.strip().replace(",", "."))
+            except ValueError:
+                raise ValueError(f"{nome} deve ser um número.")
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+            raise ValueError(f"{nome} deve ser um número.")
+        if "min" in c and v < c["min"]:
+            raise ValueError(f"{nome} não pode ser menor que {c['min']}.")
+        if "max" in c and v > c["max"]:
+            raise ValueError(f"{nome} não pode ser maior que {c['max']}.")
+        return int(v) if float(v).is_integer() else v
+    if t == "dinheiro":
+        return _centavos(v, nome)
+    if t == "data":
+        return _data(v).isoformat()
+    if t == "select":
+        if v not in c["opcoes"]:
+            raise ValueError(f"{nome}: opção inválida.")
+        return v
+    if t == "booleano":
+        if not isinstance(v, bool):
+            raise ValueError(f"{nome} deve ser sim ou não.")
+        return v
+    raise ValueError(f"{nome}: tipo desconhecido.")
+
+
+def validar_dados(campos, entrada, atual=None):
+    """Valida `entrada` contra `campos` e devolve um NOVO dict = atual + o que foi enviado.
+    - chave fora do manifesto é ignorada (nada de lixo no JSON);
+    - campo que saiu do manifesto continua guardado (nunca se apaga dado do cliente);
+    - valor vazio remove o campo."""
+    base = dict(atual or {})
+    entrada = entrada if isinstance(entrada, dict) else {}
+    for c in campos:
+        if c["chave"] in entrada:
+            v = _valida_valor(c, entrada[c["chave"]])
+            if v is None:
+                base.pop(c["chave"], None)
+            else:
+                base[c["chave"]] = v
+    for c in campos:
+        if c["obrigatorio"] and base.get(c["chave"]) in (None, ""):
+            raise ValueError(f"{c['rotulo']} é obrigatório.")
+    if len(json.dumps(base, ensure_ascii=False)) > 20000:
+        raise ValueError("Dados grandes demais.")
+    return base
+
+
+def padroes(campos):
+    return {c["chave"]: c["padrao"] for c in campos if c.get("padrao") is not None}
+
+
+def _int_id(v, nome):
+    if isinstance(v, bool) or not isinstance(v, int):
+        raise ValueError(f"{nome} inválido.")
+    return v
+
+
+def agora_local():
+    return datetime.now(TZ).replace(tzinfo=None)
+
+
+def _preencher(modelo, ctx):
+    """{chave} → valor. Só substitui chaves simples (sem atributos), o que evita vazar dados por template."""
+    return re.sub(r"\{(\w+)\}", lambda m: str(ctx.get(m.group(1), "")), modelo)
+
+
+def _data_br(d):
+    if not d:
+        return ""
+    d = d if isinstance(d, date) else date.fromisoformat(d)
+    return d.strftime("%d/%m/%Y")
+
+
+def _fmt_campo(c, v):
+    if v is None or v == "":
+        return ""
+    t = c["tipo"]
+    if t == "dinheiro":
+        return _brl(v)
+    if t == "data":
+        return _data_br(v)
+    if t == "booleano":
+        return "sim" if v else "não"
+    if t == "numero":
+        return str(v).replace(".", ",")
+    return str(v)
+
+
+def dados_legiveis(campos, dados):
+    return {c["chave"]: _fmt_campo(c, (dados or {}).get(c["chave"])) for c in campos}
+
+
+def wa_link(telefone, texto):
+    dig = re.sub(r"\D", "", telefone or "")
+    if len(dig) in (10, 11):
+        dig = "55" + dig
+    if len(dig) < 12:
+        return None
+    return "https://wa.me/" + dig + "?text=" + urllib.parse.quote(texto)
+
+
+def derivar_colunas(r, t):
+    """Copia do JSON para as colunas que servem para filtrar/ordenar/somar. O JSON continua sendo a fonte."""
+    d = r.dados or {}
+    r.titulo = str((d.get(t["titulo"]) if t["titulo"] else None) or t["rotulo"])[:200]
+    r.valor_cent = int(d.get(t["valor"]) or 0) if t["valor"] else 0
+    ref = d.get(t["data_ref"]) if t["data_ref"] else None
+    r.data_ref = date.fromisoformat(ref) if ref else (r.data_ref or hoje())
+
+
+def gerar_sinal(r, pct):
+    sinal = round(r.valor_cent * pct / 100)
+    db.session.add(RegistroPagamento(registro_id=r.id, descricao=f"Sinal ({pct:g}%)", valor_cent=sinal, vence_em=hoje()))
+    if r.valor_cent - sinal > 0:
+        db.session.add(RegistroPagamento(registro_id=r.id, descricao="Restante", valor_cent=r.valor_cent - sinal,
+                                         vence_em=r.data_ref or hoje()))
+
+
+def sincronizar_lembretes(r, t, cliente):
+    """Mantém as Atividades automáticas do registro de acordo com o manifesto (idempotente).
+    Data mudou → atualiza (e reabre se já estava feita). Data apagada ou etapa final → remove a pendente."""
+    for i, lem in enumerate(t["lembretes"]):
+        chave = f"auto:{t['id']}:{lem['campo']}:{i}"
+        alvo = (r.dados or {}).get(lem["campo"])
+        atual = db.session.scalar(select(Atividade).where(Atividade.registro_id == r.id, Atividade.auto_chave == chave))
+        if not alvo or r.status in t["etapas_finais"]:
+            if atual and not atual.feita_em:
+                db.session.delete(atual)
+            continue
+        quando = datetime.combine(date.fromisoformat(alvo) - timedelta(days=lem["dias_antes"]), datetime.min.time()).replace(hour=9)
+        titulo = _preencher(lem["titulo"], dict(titulo=r.titulo, nome=cliente.empresa))[:200]
+        if atual:
+            if atual.vence_em != quando:
+                atual.vence_em, atual.feita_em = quando, None
+            if not atual.feita_em:
+                atual.titulo = titulo
+        else:
+            db.session.add(Atividade(user_id=r.owner_id, cliente_id=cliente.id, registro_id=r.id, titulo=titulo,
+                                     vence_em=quando, auto_chave=chave))
+
+
+def migrar():
+    """Colunas novas em tabelas que já existiam (db.create_all só cria tabelas que faltam). Idempotente."""
+    _add_col("clientes", "dados", "JSON")
+    _add_col("atividades", "registro_id", "INTEGER REFERENCES registros(id) ON DELETE CASCADE")
+    _add_col("atividades", "auto_chave", "VARCHAR(80)")
+
+
+MANIFESTO = carregar_nicho(NICHO)
+MODULOS = set(MANIFESTO["modulos"])
+TIPOS = {t["id"]: t for t in MANIFESTO["tipos_registro"]}
+NOME_APP = _env("NEGOCIO_NOME") or MANIFESTO["nome"]
+
+
 def criar_app():
     app = Flask(__name__)
     app.config.update(
@@ -853,7 +1272,7 @@ def criar_app():
 
     @app.context_processor
     def _ctx():
-        return dict(csrf=session.get("csrf", ""), usuario=usuario_atual(), app_nome="Leanttro CRM")
+        return dict(csrf=session.get("csrf", ""), usuario=usuario_atual(), app_nome=NOME_APP, nicho=MANIFESTO)
 
     @app.before_request
     def _csrf():
@@ -865,6 +1284,16 @@ def criar_app():
                 if request.path.startswith("/api/"):
                     return jsonify(ok=False, erro="Sessão expirada. Recarregue a página."), 400
                 return render_template("login.html", erro="Sua sessão expirou. Tente entrar de novo."), 400
+
+    @app.before_request
+    def _modulos():
+        """Módulo desligado no manifesto = as rotas dele respondem 404 (o código de agência não existe na ótica)."""
+        p = request.path
+        if not p.startswith("/api/"):
+            return None
+        for mod, prefixos in MODULO_ROTAS.items():
+            if mod not in MODULOS and any(p == x or p.startswith(x + "/") for x in prefixos):
+                return jsonify(ok=False, erro="Recurso não disponível neste painel."), 404
 
     @app.after_request
     def _headers(r):
@@ -950,7 +1379,10 @@ def criar_app():
     @app.get("/app")
     @login_obrigatorio
     def painel():
-        return render_template("app.html")
+        if "registros" not in MODULOS:                       # CRM de agência (original)
+            return render_template("app.html")
+        # nicho: usa templates/nichos/<NICHO>/app.html se existir, senão o painel genérico
+        return render_template([f"nichos/{NICHO}/app.html", "app_generico.html"])
 
     @app.route("/conta/senha", methods=["GET", "POST"])
     @login_obrigatorio
@@ -2057,6 +2489,472 @@ def criar_app():
             abort(404)
         return send_from_directory(DATA_DIR / "uploads", x.arquivo, as_attachment=True)
 
+    # ═══════════════════════════════════════════════════════════════════════
+    # NICHOS: API genérica (clientes + registros guiados pelo manifesto)
+    #   Só existe quando o módulo "registros" está ligado (senão /api/n/* responde 404).
+    # ═══════════════════════════════════════════════════════════════════════
+    def _n_equipe():
+        return MANIFESTO["visibilidade"] == "equipe"
+
+    def _n_visivel(stmt, coluna):
+        return stmt if _n_equipe() else escopo(stmt, coluna, equipe=request.args.get("equipe") == "1")
+
+    def _n_pode(owner_id):
+        u = usuario_atual()
+        return _n_equipe() or u.is_admin or owner_id == u.id
+
+    def _n_cliente(cid):
+        c = db.session.get(Cliente, cid)
+        if not c or not _n_pode(c.owner_id):
+            abort(404)
+        return c
+
+    def _n_registro(rid):
+        r = db.session.get(Registro, rid)
+        if not r or not _n_pode(r.owner_id):
+            abort(404)
+        return r
+
+    def _n_cli_json(c):
+        return dict(id=c.id, nome=c.empresa, telefone=c.telefone, email=c.email, documento=c.documento,
+                    endereco=c.endereco, observacoes=c.observacoes, dados=c.dados or {}, criado_em=_fmt(c.criado_em))
+
+    def _n_pg_json(p):
+        return dict(id=p.id, registro_id=p.registro_id, descricao=p.descricao, valor_cent=p.valor_cent,
+                    recebido_cent=p.valor_recebido_cent, vence_em=_fmt(p.vence_em), pago_em=_fmt(p.pago_em), status=p.status)
+
+    def _n_reg_json(r, cliente_nome=None):
+        return dict(id=r.id, tipo=r.tipo, cliente_id=r.cliente_id, cliente_nome=cliente_nome, titulo=r.titulo,
+                    status=r.status, data_ref=_fmt(r.data_ref), valor_cent=r.valor_cent, dados=r.dados or {},
+                    versao=r.versao, criado_em=_fmt(r.criado_em), atualizado_em=_fmt(r.atualizado_em))
+
+    def _n_ativ_json(a, cliente_nome=None):
+        return dict(id=a.id, titulo=a.titulo, vence_em=_fmt(a.vence_em), feita_em=_fmt(a.feita_em),
+                    atrasada=bool(a.vence_em and not a.feita_em and a.vence_em < agora_local()),
+                    cliente_id=a.cliente_id, cliente_nome=cliente_nome, registro_id=a.registro_id)
+
+    def _n_preencher_cliente(c, d, novo=False):
+        c.empresa = _txt(d, "nome", 160, novo or "nome" in d, "Nome") or c.empresa
+        for campo, n in (("telefone", 40), ("documento", 20), ("endereco", 300)):
+            if campo in d:
+                setattr(c, campo, _txt(d, campo, n))
+        if "email" in d:
+            e = _txt(d, "email", 254)
+            if e and not EMAIL_RE.match(e):
+                raise ValueError("E-mail inválido.")
+            c.email = e
+        if "observacoes" in d:
+            c.observacoes = _txt(d, "observacoes", 4000) or ""
+        if novo or isinstance(d.get("dados"), dict):
+            entrada = d.get("dados") if isinstance(d.get("dados"), dict) else {}
+            if novo:
+                entrada = {**padroes(MANIFESTO["campos_cliente"]), **entrada}
+            c.dados = validar_dados(MANIFESTO["campos_cliente"], entrada, c.dados)
+
+    @app.get("/api/n/schema")
+    @login_obrigatorio
+    def n_schema():
+        u = usuario_atual()
+        return jsonify(ok=True, nicho=MANIFESTO, app_nome=NOME_APP,
+                       usuario=dict(id=u.id, nome=u.nome, admin=u.is_admin))
+
+    # ── clientes ───────────────────────────────────────────────────────────
+    @app.get("/api/n/clientes")
+    @login_obrigatorio
+    def n_clientes():
+        stmt = _n_visivel(select(Cliente), Cliente.owner_id)
+        q = (request.args.get("q") or "").strip()[:80]
+        if q:
+            stmt = stmt.where(or_(Cliente.empresa.icontains(q, autoescape=True),
+                                  Cliente.telefone.icontains(q, autoescape=True),
+                                  Cliente.email.icontains(q, autoescape=True)))
+        rows = db.session.scalars(stmt.order_by(Cliente.empresa).limit(300))
+        return jsonify(ok=True, clientes=[_n_cli_json(c) for c in rows])
+
+    @app.post("/api/n/clientes")
+    @login_obrigatorio
+    def n_cliente_criar():
+        c = Cliente(owner_id=usuario_atual().id, empresa="", origem="manual")
+        try:
+            _n_preencher_cliente(c, _json(), novo=True)
+        except ValueError as e:
+            return _erro(str(e))
+        db.session.add(c)
+        db.session.commit()
+        return jsonify(ok=True, cliente=_n_cli_json(c))
+
+    @app.get("/api/n/clientes/<int:cid>")
+    @login_obrigatorio
+    def n_cliente_ver(cid):
+        c = _n_cliente(cid)
+        regs = db.session.scalars(select(Registro).where(Registro.cliente_id == c.id)
+                                  .order_by(Registro.data_ref.desc(), Registro.id.desc()).limit(300))
+        a_receber = db.session.scalar(
+            select(func.coalesce(func.sum(RegistroPagamento.valor_cent - RegistroPagamento.valor_recebido_cent), 0))
+            .select_from(RegistroPagamento).join(Registro, Registro.id == RegistroPagamento.registro_id)
+            .where(Registro.cliente_id == c.id, RegistroPagamento.valor_recebido_cent < RegistroPagamento.valor_cent))
+        return jsonify(ok=True, cliente=_n_cli_json(c), registros=[_n_reg_json(r, c.empresa) for r in regs],
+                       a_receber_cent=int(a_receber))
+
+    @app.put("/api/n/clientes/<int:cid>")
+    @login_obrigatorio
+    def n_cliente_editar(cid):
+        c = _n_cliente(cid)
+        try:
+            _n_preencher_cliente(c, _json())
+        except ValueError as e:
+            db.session.rollback()
+            return _erro(str(e))
+        db.session.commit()
+        return jsonify(ok=True, cliente=_n_cli_json(c))
+
+    @app.delete("/api/n/clientes/<int:cid>")
+    @admin_obrigatorio
+    def n_cliente_apagar(cid):
+        c = _n_cliente(cid)
+        if db.session.scalar(select(func.count()).select_from(Registro).where(Registro.cliente_id == c.id)):
+            return _erro("Este cliente tem registros. Apague-os primeiro.", 409)
+        db.session.delete(c)
+        db.session.commit()
+        return jsonify(ok=True)
+
+    # ── registros ──────────────────────────────────────────────────────────
+    @app.get("/api/n/registros")
+    @login_obrigatorio
+    def n_registros():
+        a = request.args
+        stmt = _n_visivel(select(Registro, Cliente.empresa).join(Cliente, Cliente.id == Registro.cliente_id), Registro.owner_id)
+        try:
+            if a.get("tipo"):
+                stmt = stmt.where(Registro.tipo == a["tipo"])
+            if a.get("status"):
+                stmt = stmt.where(Registro.status == a["status"])
+            if a.get("cliente_id"):
+                stmt = stmt.where(Registro.cliente_id == int(a["cliente_id"]))
+            if a.get("de"):
+                stmt = stmt.where(Registro.data_ref >= _data(a["de"]))
+            if a.get("ate"):
+                stmt = stmt.where(Registro.data_ref <= _data(a["ate"]))
+        except ValueError:
+            return _erro("Filtro inválido.")
+        if a.get("abertos") == "1":
+            stmt = stmt.where(or_(*[and_(Registro.tipo == t["id"], Registro.status.notin_(t["etapas_finais"]))
+                                    for t in MANIFESTO["tipos_registro"]]))
+        ordem = Registro.data_ref.asc() if a.get("ordem") == "asc" else Registro.data_ref.desc()
+        rows = db.session.execute(stmt.order_by(ordem, Registro.id.desc()).limit(500))
+        return jsonify(ok=True, registros=[_n_reg_json(r, nome) for r, nome in rows])
+
+    @app.post("/api/n/registros")
+    @login_obrigatorio
+    def n_registro_criar():
+        d, u = _json(), usuario_atual()
+        try:
+            t = TIPOS.get(d.get("tipo"))
+            if not t:
+                raise ValueError("Tipo de registro inválido.")
+            c = _n_cliente(_int_id(d.get("cliente_id"), "Cliente"))
+            status = d.get("status") or t["etapas"][0]
+            if status not in t["etapas"]:
+                raise ValueError("Etapa inválida.")
+            r = Registro(owner_id=u.id, cliente_id=c.id, tipo=t["id"], status=status)
+            entrada = d.get("dados") if isinstance(d.get("dados"), dict) else {}
+            r.dados = validar_dados(t["campos"], {**padroes(t["campos"]), **entrada}, None)
+            derivar_colunas(r, t)
+            db.session.add(r)
+            db.session.flush()
+            db.session.add(RegistroHistorico(registro_id=r.id, user_id=u.id, tipo="nota", texto=f"{t['rotulo']} criado"))
+            if t["pagamentos"] and t["pagamentos"]["sinal_pct"] and r.valor_cent > 0:
+                gerar_sinal(r, t["pagamentos"]["sinal_pct"])
+            sincronizar_lembretes(r, t, c)
+            db.session.commit()
+        except ValueError as e:
+            db.session.rollback()
+            return _erro(str(e))
+        return jsonify(ok=True, registro=_n_reg_json(r, c.empresa))
+
+    @app.get("/api/n/registros/<int:rid>")
+    @login_obrigatorio
+    def n_registro_ver(rid):
+        r = _n_registro(rid)
+        hist = db.session.scalars(select(RegistroHistorico).where(RegistroHistorico.registro_id == r.id)
+                                  .order_by(RegistroHistorico.id.desc()).limit(50))
+        c = db.session.get(Cliente, r.cliente_id)
+        return jsonify(ok=True, registro=_n_reg_json(r, c.empresa), cliente=_n_cli_json(c),
+                       pagamentos=[_n_pg_json(p) for p in r.pagamentos],
+                       historico=[dict(tipo=h.tipo, texto=h.texto, de=h.status_de, para=h.status_para,
+                                       em=_fmt(h.criado_em)) for h in hist])
+
+    @app.put("/api/n/registros/<int:rid>")
+    @login_obrigatorio
+    def n_registro_editar(rid):
+        r, d, u = _n_registro(rid), _json(), usuario_atual()
+        t = TIPOS.get(r.tipo)
+        if not t:
+            return _erro("Este tipo de registro não existe mais no manifesto do nicho.", 409)
+        if "versao" in d and d["versao"] != r.versao:
+            return _erro("Este registro foi alterado por outra pessoa. Recarregue.", 409)
+        try:
+            if isinstance(d.get("dados"), dict):
+                r.dados = validar_dados(t["campos"], d["dados"], r.dados)
+                derivar_colunas(r, t)
+            novo = d.get("status")
+            if novo and novo != r.status:
+                if novo not in t["etapas"]:
+                    raise ValueError("Etapa inválida.")
+                db.session.add(RegistroHistorico(registro_id=r.id, user_id=u.id, tipo="status", texto="",
+                                                 status_de=r.status, status_para=novo))
+                r.status = novo
+            r.versao += 1
+            sincronizar_lembretes(r, t, db.session.get(Cliente, r.cliente_id))
+            db.session.commit()
+        except ValueError as e:
+            db.session.rollback()
+            return _erro(str(e))
+        return jsonify(ok=True, registro=_n_reg_json(r, db.session.get(Cliente, r.cliente_id).empresa))
+
+    @app.delete("/api/n/registros/<int:rid>")
+    @login_obrigatorio
+    def n_registro_apagar(rid):
+        r, u = _n_registro(rid), usuario_atual()
+        if not u.is_admin and r.owner_id != u.id:
+            return _erro("Só quem criou ou o administrador pode apagar.", 403)
+        db.session.delete(r)
+        db.session.commit()
+        return jsonify(ok=True)
+
+    @app.post("/api/n/registros/<int:rid>/nota")
+    @login_obrigatorio
+    def n_registro_nota(rid):
+        r, d = _n_registro(rid), _json()
+        try:
+            txt = _txt(d, "texto", 2000, True, "Texto")
+        except ValueError as e:
+            return _erro(str(e))
+        db.session.add(RegistroHistorico(registro_id=r.id, user_id=usuario_atual().id, tipo="nota", texto=txt))
+        r.atualizado_em = agora()
+        db.session.commit()
+        return jsonify(ok=True)
+
+    # ── pagamentos do registro ─────────────────────────────────────────────
+    @app.post("/api/n/registros/<int:rid>/pagamentos")
+    @login_obrigatorio
+    def n_pg_criar(rid):
+        r, d = _n_registro(rid), _json()
+        t = TIPOS.get(r.tipo)
+        try:
+            if not t or not t["pagamentos"]:
+                raise ValueError("Este tipo de registro não usa pagamentos.")
+            valor = _centavos(d.get("valor_cent"), "Valor")
+            if valor <= 0:
+                raise ValueError("Informe um valor maior que zero.")
+            p = RegistroPagamento(registro_id=r.id, descricao=_txt(d, "descricao", 120) or "Pagamento",
+                                  valor_cent=valor, vence_em=_data(d.get("vence_em")) or hoje())
+            db.session.add(p)
+            db.session.commit()
+        except ValueError as e:
+            db.session.rollback()
+            return _erro(str(e))
+        return jsonify(ok=True, pagamento=_n_pg_json(p))
+
+    def _n_pg(pid):
+        p = db.session.get(RegistroPagamento, pid)
+        if not p:
+            abort(404)
+        _n_registro(p.registro_id)
+        return p
+
+    @app.post("/api/n/pagamentos/<int:pid>/receber")
+    @login_obrigatorio
+    def n_pg_receber(pid):
+        p, d = _n_pg(pid), _json()
+        try:
+            total = min(_centavos(d.get("total_recebido_cent"), "Valor recebido"), p.valor_cent)
+            data = _data(d.get("data"))
+        except ValueError as e:
+            return _erro(str(e))
+        p.valor_recebido_cent = total                      # define o TOTAL recebido (aceita parcial)
+        p.pago_em = (data or hoje()) if total > 0 else None
+        db.session.commit()
+        return jsonify(ok=True, pagamento=_n_pg_json(p))
+
+    @app.delete("/api/n/pagamentos/<int:pid>")
+    @login_obrigatorio
+    def n_pg_apagar(pid):
+        p = _n_pg(pid)
+        if p.valor_recebido_cent > 0:
+            return _erro("Pagamento com valor recebido não pode ser removido. Zere o recebimento antes.", 409)
+        db.session.delete(p)
+        db.session.commit()
+        return jsonify(ok=True)
+
+    # ── resumo e agenda ────────────────────────────────────────────────────
+    @app.get("/api/n/resumo")
+    @login_obrigatorio
+    def n_resumo():
+        hj = hoje()
+        mes_ini = hj.replace(day=1)
+        mes_fim = _add_meses(mes_ini, 1)
+        tipos = []
+        for t in MANIFESTO["tipos_registro"]:
+            stmt = _n_visivel(select(Registro.status, func.count(), func.coalesce(func.sum(Registro.valor_cent), 0))
+                              .where(Registro.tipo == t["id"]), Registro.owner_id).group_by(Registro.status)
+            linhas = {s: (n, int(v)) for s, n, v in db.session.execute(stmt)}
+            etapas = [dict(etapa=e, qtd=linhas.get(e, (0, 0))[0], valor_cent=linhas.get(e, (0, 0))[1],
+                           final=e in t["etapas_finais"]) for e in t["etapas"]]
+            tipos.append(dict(id=t["id"], rotulo=t["rotulo"], rotulo_plural=t["rotulo_plural"], etapas=etapas,
+                              em_aberto=sum(x["qtd"] for x in etapas if not x["final"])))
+
+        P = RegistroPagamento
+
+        def soma(expr, *filtros):
+            q = (select(func.coalesce(func.sum(expr), 0)).select_from(P)
+                 .join(Registro, Registro.id == P.registro_id).where(*filtros))
+            return int(db.session.scalar(_n_visivel(q, Registro.owner_id)))
+
+        financeiro = dict(
+            previsto_mes_cent=soma(P.valor_cent, P.vence_em >= mes_ini, P.vence_em < mes_fim),
+            recebido_mes_cent=soma(P.valor_recebido_cent, P.pago_em >= mes_ini, P.pago_em < mes_fim),
+            em_atraso_cent=soma(P.valor_cent - P.valor_recebido_cent, P.vence_em < hj, P.valor_recebido_cent < P.valor_cent),
+            a_receber_cent=soma(P.valor_cent - P.valor_recebido_cent, P.valor_recebido_cent < P.valor_cent))
+
+        proximos = []
+        for t in MANIFESTO["tipos_registro"]:
+            if not t["data_ref"]:
+                continue
+            stmt = _n_visivel(select(Registro, Cliente.empresa).join(Cliente, Cliente.id == Registro.cliente_id)
+                              .where(Registro.tipo == t["id"], Registro.data_ref >= hj,
+                                     Registro.status.notin_(t["etapas_finais"])), Registro.owner_id)
+            proximos += [_n_reg_json(r, nome) for r, nome in
+                         db.session.execute(stmt.order_by(Registro.data_ref, Registro.id).limit(8))]
+        proximos.sort(key=lambda x: x["data_ref"])
+
+        pend = _n_visivel(select(func.count()).select_from(Atividade).where(
+            Atividade.registro_id.is_not(None), Atividade.feita_em.is_(None), Atividade.vence_em <= agora_local()),
+            Atividade.user_id)
+        clientes = db.session.scalar(_n_visivel(select(func.count()).select_from(Cliente), Cliente.owner_id))
+        return jsonify(ok=True, clientes=clientes, tipos=tipos, financeiro=financeiro, proximos=proximos[:8],
+                       lembretes_pendentes=db.session.scalar(pend))
+
+    @app.get("/api/n/agenda")
+    @login_obrigatorio
+    def n_agenda():
+        try:
+            dias = max(1, min(int(request.args.get("dias", 14)), 365))
+        except ValueError:
+            dias = 14
+        stmt = (select(Atividade, Cliente.empresa).outerjoin(Cliente, Cliente.id == Atividade.cliente_id)
+                .where(Atividade.lead_id.is_(None), Atividade.feita_em.is_(None), Atividade.vence_em.is_not(None),
+                       Atividade.vence_em <= agora_local() + timedelta(days=dias)))
+        rows = db.session.execute(_n_visivel(stmt, Atividade.user_id).order_by(Atividade.vence_em).limit(200))
+        return jsonify(ok=True, atividades=[_n_ativ_json(a, nome) for a, nome in rows])
+
+    @app.post("/api/n/atividades")
+    @login_obrigatorio
+    def n_ativ_criar():
+        d, u = _json(), usuario_atual()
+        try:
+            titulo = _txt(d, "titulo", 200, True, "Título")
+            try:
+                vence = datetime.fromisoformat(d.get("vence_em") or "")
+            except (TypeError, ValueError):
+                raise ValueError("Informe quando (AAAA-MM-DD ou AAAA-MM-DDTHH:MM).")
+            c = r = None
+            if d.get("registro_id") is not None:
+                r = _n_registro(_int_id(d["registro_id"], "Registro"))
+                c = db.session.get(Cliente, r.cliente_id)
+            elif d.get("cliente_id") is not None:
+                c = _n_cliente(_int_id(d["cliente_id"], "Cliente"))
+            a = Atividade(user_id=u.id, titulo=titulo, vence_em=vence, cliente_id=c.id if c else None,
+                          registro_id=r.id if r else None)
+            db.session.add(a)
+            db.session.commit()
+        except ValueError as e:
+            db.session.rollback()
+            return _erro(str(e))
+        return jsonify(ok=True, atividade=_n_ativ_json(a, c.empresa if c else None))
+
+    @app.post("/api/n/atividades/<int:aid>/feita")
+    @login_obrigatorio
+    def n_ativ_feita(aid):
+        a, d = db.session.get(Atividade, aid), _json()
+        if not a or not _n_pode(a.user_id):
+            abort(404)
+        a.feita_em = agora() if d.get("feita", True) else None
+        db.session.commit()
+        return jsonify(ok=True, atividade=_n_ativ_json(a))
+
+    # ── mensagens (modelos do manifesto) e IA ──────────────────────────────
+    def _n_ctx_msg(c, r=None):
+        u = usuario_atual()
+        ctx = dict(dados_legiveis(MANIFESTO["campos_cliente"], c.dados))
+        if r and TIPOS.get(r.tipo):
+            ctx.update(dados_legiveis(TIPOS[r.tipo]["campos"], r.dados))
+        ctx.update(nome=c.empresa, primeiro_nome=(c.empresa.split() or [""])[0], telefone=c.telefone or "",
+                   atendente=u.nome, negocio=NOME_APP)
+        if r:
+            ctx.update(titulo=r.titulo, status=r.status, valor=_brl(r.valor_cent), data=_data_br(r.data_ref))
+        return ctx
+
+    def _n_alvo(d):
+        """cliente (+ registro opcional) citados no corpo da requisição."""
+        c = _n_cliente(_int_id(d.get("cliente_id"), "Cliente"))
+        r = None
+        if d.get("registro_id") is not None:
+            r = _n_registro(_int_id(d["registro_id"], "Registro"))
+            if r.cliente_id != c.id:
+                raise ValueError("Esse registro é de outro cliente.")
+        return c, r
+
+    @app.post("/api/n/mensagem")
+    @login_obrigatorio
+    def n_mensagem():
+        d = _json()
+        try:
+            c, r = _n_alvo(d)
+            modelo = MANIFESTO["mensagens"].get(d.get("modelo"))
+            if modelo is None:
+                raise ValueError("Modelo de mensagem inexistente.")
+        except ValueError as e:
+            return _erro(str(e))
+        texto = _preencher(modelo, _n_ctx_msg(c, r))
+        return jsonify(ok=True, texto=texto, whatsapp=wa_link(c.telefone, texto))
+
+    @app.post("/api/n/ia/mensagem")
+    @login_obrigatorio
+    def n_ia_mensagem():
+        d, u = _json(), usuario_atual()
+        try:
+            c, r = _n_alvo(d)
+            instrucao = _txt(d, "instrucao", 300)
+        except ValueError as e:
+            return _erro(str(e))
+        chave = chave_do_vendedor(u, "groq") or _env("GROQ_API_KEY")      # chave pessoal ou a do servidor
+        if not chave:
+            return _erro("Cadastre a chave Groq em Perfil (ou peça ao administrador para definir GROQ_API_KEY).")
+        if not limitar(f"groq:{u.id}", 60, 3600):
+            return _erro("Limite de 60 mensagens por hora atingido.", 429)
+        canal = "e-mail" if d.get("canal") == "email" else "WhatsApp"
+        ctx = _n_ctx_msg(c, r)
+        base = MANIFESTO["mensagens"].get(d.get("modelo"))
+        if base:
+            prompt = (f"Reescreva esta mensagem de {canal} em português do Brasil, natural e curta (até 90 palavras), "
+                      f"mantendo exatamente os mesmos fatos (nomes, datas e valores):\n\n{_preencher(base, ctx)}")
+        else:
+            # LGPD: só vão para o provedor de IA nome e fatos básicos do registro, nunca o conteúdo de `dados`.
+            fatos = "".join(f" {k}: {ctx[k]}." for k in ("titulo", "status", "data", "valor") if r and ctx.get(k))
+            prompt = (f"Escreva uma mensagem de {canal} em português do Brasil, curta (até 90 palavras), cordial e sem "
+                      f"exageros, para {c.empresa}.{fatos} Assine como {u.nome} ({NOME_APP}). Não invente dados.")
+        if instrucao:
+            prompt += f" Instrução adicional: {instrucao}"
+        persona = MANIFESTO["ia"]["persona"] or "Você é atendente de um pequeno negócio brasileiro, cordial e objetivo."
+        try:
+            texto = groq_texto(chave, prompt, persona + " Responda apenas com o texto da mensagem.")
+        except RuntimeError as e:
+            return _erro(str(e), 502)
+        registrar_uso(u, "groq")
+        db.session.commit()
+        return jsonify(ok=True, texto=texto, whatsapp=wa_link(c.telefone, texto))
+
     # ── erros em JSON para /api ────────────────────────────────────────────
     @app.errorhandler(404)
     def _e404(_e):
@@ -2088,6 +2986,7 @@ def init_db():
     """Idempotente: cria tabelas, aplica migrações, semeia config e sincroniza o admin com o .env."""
     with app.app_context():
         db.create_all()
+        migrar()
         info = db.session.get(SchemaInfo, 1)
         if info is None:
             db.session.add(SchemaInfo(id=1, versao=SCHEMA_VERSAO))
@@ -2121,8 +3020,13 @@ if __name__ == "__main__":
     if cmd == "init-db":
         init_db()
         print("banco ok")
+    elif cmd == "check-nicho":
+        print(f"nicho '{MANIFESTO['id']}' ok · módulos: {', '.join(MANIFESTO['modulos'])}")
+        for t in MANIFESTO["tipos_registro"]:
+            print(f"  - {t['id']}: {len(t['campos'])} campos · etapas: {' > '.join(t['etapas'])}"
+                  f"{' · pagamentos' if t['pagamentos'] else ''}{' · ' + str(len(t['lembretes'])) + ' lembrete(s)' if t['lembretes'] else ''}")
     elif cmd == "run":
         init_db()
         app.run(host=_env("HOST") or "127.0.0.1", port=_int("PORT", 8000), debug=DEBUG)
     else:
-        sys.exit("Uso: python app.py [run | init-db]")
+        sys.exit("Uso: python app.py [run | init-db | check-nicho]")
