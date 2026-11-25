@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<title>Contas e nichos · {{ app_nome }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--roxo:#7943e2;--roxo-esc:#6532cf;--roxo-claro:#ece5fd;--lavanda:#f4effd;--tinta:#071421;--linha:#dfe6e9;--mudo:#425064;--ok:#1e8e5a;--erro:#c0392b;--r:13px;--sombra:0 5px 15px #0a1a2510}
+*{box-sizing:border-box}html,body{margin:0}
+body{min-height:100vh;background:linear-gradient(110deg,var(--lavanda),#f8f6fd) fixed;color:#07111b;font:14px/1.5 "DM Sans",Arial,sans-serif}
+button,input,select{font:inherit;color:inherit}
+.topbar{background:var(--roxo);color:#fff;padding:0 24px;min-height:64px;display:flex;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 2px 14px #0002}
+.topbar b{font-size:19px;letter-spacing:-.6px}.topbar a{color:#fff;font-weight:700;text-decoration:none;background:#ffffff24;padding:9px 16px;border-radius:22px}
+main{max-width:980px;margin:0 auto;padding:30px 16px 56px}
+h1{font-size:clamp(24px,3.4vw,34px);font-weight:800;margin:0 0 6px;letter-spacing:-1.2px;color:var(--tinta)}
+h2{font-size:16px;font-weight:800;margin:0 0 12px;color:var(--tinta)}
+.sub{color:var(--mudo);font-size:15px;margin:0 0 24px;max-width:680px}
+.card{background:#fff;border:1px solid var(--linha);border-radius:var(--r);padding:20px;box-shadow:var(--sombra);margin-bottom:16px}
+.form{display:grid;gap:0 12px}@media(min-width:640px){.form{grid-template-columns:1fr 1fr}}
+label{display:block;font-size:12px;font-weight:700;margin:10px 0 5px;color:var(--mudo)}
+input,select{width:100%;padding:11px 13px;border:1px solid var(--linha);border-radius:10px;background:#fff}
+input:focus-visible,select:focus-visible{outline:0;border-color:var(--roxo);box-shadow:0 0 0 4px #7943e226}
+.btn{display:inline-flex;align-items:center;justify-content:center;padding:11px 18px;border:0;border-radius:10px;background:var(--roxo);color:#fff;font-weight:800;cursor:pointer}
+.btn.sec{background:transparent;color:var(--roxo-esc);border:1px solid var(--roxo)}.btn.sec:hover{background:var(--roxo-claro)}
+.btn.peq{padding:6px 12px;font-size:12px;border-radius:9px}.btn.perigo{color:var(--erro);border-color:var(--erro)}
+.topo{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.chip{display:inline-block;padding:4px 10px;border-radius:30px;font-size:10.5px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;background:var(--roxo-claro);color:var(--roxo-esc)}
+.chip.ok{background:#e4f5ec;color:var(--ok)}.chip.er{background:#fdecea;color:var(--erro)}
+.linha{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--linha);font-weight:600;flex-wrap:wrap}
+.linha small{display:block;color:var(--mudo);font-size:12px;font-weight:500}
+.acoes{display:flex;gap:8px;flex-wrap:wrap}
+.aviso{background:var(--lavanda);border:1px solid #e3d9fa;border-left:4px solid var(--roxo);border-radius:12px;padding:12px 14px;margin:12px 0;word-break:break-word}
+.aviso.er{border-left-color:var(--erro);background:#fdecea}
+.vazio{color:var(--mudo);margin:0}
+.novo{border-top:1px dashed #d8cdf6;margin-top:14px;padding-top:6px}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:28px;background:#14101f;color:#fff;padding:12px 18px;border-radius:12px;font-size:13px;font-weight:600;opacity:0;pointer-events:none;transition:opacity .2s;max-width:90vw}
+#toast.on{opacity:1}
+</style>
+</head>
+<body>
+<header class="topbar"><b>Contas e nichos</b><a href="/app">← Voltar ao painel</a></header>
+<main>
+  <h1>Contas e nichos</h1>
+  <p class="sub">Cada <b>conta</b> é um cliente seu (uma ótica, uma confeitaria…). Você escolhe o nicho e cria os acessos; quem entrar cai direto no painel certo e só enxerga os dados da própria conta.</p>
+  <div id="erros"></div>
+  <section class="card">
+    <h2>Nova conta</h2>
+    <div class="form">
+      <div><label for="c-nome">Nome do negócio</label><input id="c-nome" maxlength="120" placeholder="Ótica Visão"></div>
+      <div><label for="c-nicho">Nicho</label><select id="c-nicho"></select></div>
+    </div>
+    <p style="margin:14px 0 0"><button class="btn" data-act="criar-conta">Criar conta</button></p>
+  </section>
+  <div id="lista"></div>
+</main>
+<div id="toast" role="status"></div>
+<script>
+const CSRF = {{ csrf|tojson }};
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let _t; const aviso = m => { const t = $('#toast'); t.textContent = m; t.classList.add('on'); clearTimeout(_t); _t = setTimeout(() => t.classList.remove('on'), 3400); };
+async function api(metodo, url, corpo) {
+  const r = await fetch(url, {method: metodo, headers: {'Content-Type': 'application/json', 'X-CSRF': CSRF}, body: corpo ? JSON.stringify(corpo) : undefined});
+  let d = {}; try { d = await r.json(); } catch (e) {}
+  if (r.status === 401) { location.href = '/login'; throw new Error('Faça login.'); }
+  if (!r.ok || d.ok === false) throw new Error(d.erro || 'Erro ' + r.status);
+  return d;
+}
+let NICHOS = [], SENHAS = {};
+async function carregar() {
+  const d = await api('GET', '/api/admin/contas');
+  NICHOS = d.nichos;
+  $('#c-nicho').innerHTML = NICHOS.map(n => `<option value="${esc(n.id)}">${esc(n.nome)} (${esc(n.id)})</option>`).join('');
+  $('#erros').innerHTML = Object.entries(d.nichos_com_erro).map(([p, e]) => `<div class="aviso er"><b>Nicho "${esc(p)}" ignorado:</b> ${esc(e)}</div>`).join('');
+  $('#lista').innerHTML = d.contas.map(c => `<section class="card">
+    <div class="topo"><div><h2 style="margin:0">${esc(c.nome)}</h2>
+      <span class="chip">${esc(c.nicho)}</span> <span class="chip ${c.ativo ? 'ok' : 'er'}">${c.ativo ? 'Ativa' : 'Suspensa'}</span>
+      ${c.nicho_ok ? '' : '<span class="chip er">nicho indisponível</span>'}</div>
+      <div class="acoes"><button class="btn sec peq ${c.ativo ? 'perigo' : ''}" data-act="conta-ativo" data-id="${c.id}" data-v="${c.ativo ? 0 : 1}">${c.ativo ? 'Suspender' : 'Reativar'}</button></div></div>
+    <div style="margin-top:8px">${c.usuarios.map(u => `<div class="linha"><div>${esc(u.nome)}<small>${esc(u.email)}${u.status === 'bloqueado' ? ' · bloqueado' : ''}${u.ultimo_login ? ' · último acesso ' + esc(u.ultimo_login.slice(0, 10).split('-').reverse().join('/')) : ' · nunca entrou'}</small></div>
+      <div class="acoes"><button class="btn sec peq" data-act="u-reset" data-id="${u.id}">Nova senha</button>
+      <button class="btn sec peq ${u.status === 'ativo' ? 'perigo' : ''}" data-act="u-status" data-id="${u.id}" data-v="${u.status === 'ativo' ? 'bloqueado' : 'ativo'}">${u.status === 'ativo' ? 'Bloquear' : 'Ativar'}</button></div></div>`).join('') || '<p class="vazio">Nenhum acesso ainda.</p>'}</div>
+    <div id="senha-${c.id}"></div>
+    <div class="novo"><div class="form">
+      <div><label for="n-nome-${c.id}">Nome de quem vai acessar</label><input id="n-nome-${c.id}" maxlength="80"></div>
+      <div><label for="n-mail-${c.id}">E-mail (será o login)</label><input id="n-mail-${c.id}" type="email" maxlength="254"></div></div>
+      <p style="margin:12px 0 0"><button class="btn peq" data-act="u-novo" data-id="${c.id}">Criar acesso</button></p></div>
+  </section>`).join('') || '<p class="vazio">Nenhuma conta ainda. Crie a primeira acima.</p>';
+  for (const [cid, html] of Object.entries(SENHAS)) { const el = $('#senha-' + cid); if (el) el.innerHTML = html; }
+}
+const mostrarSenha = (cid, quem, senha) => { SENHAS = {[cid]: `<div class="aviso">Senha provisória de <b>${esc(quem)}</b> (aparece só agora, copie e envie): <b>${esc(senha)}</b><br>No primeiro acesso a pessoa será obrigada a trocar.</div>`}; };
+const ACOES = {
+  async 'criar-conta'() {
+    const nome = $('#c-nome').value.trim(); if (!nome) { aviso('Informe o nome do negócio.'); return; }
+    await api('POST', '/api/admin/contas', {nome, nicho: $('#c-nicho').value}); $('#c-nome').value = ''; aviso('Conta criada. Agora crie o acesso dela.'); await carregar();
+  },
+  async 'conta-ativo'(b) { await api('PUT', '/api/admin/contas/' + b.dataset.id, {ativo: b.dataset.v === '1'}); await carregar(); },
+  async 'u-novo'(b) {
+    const id = b.dataset.id;
+    const d = await api('POST', `/api/admin/contas/${id}/usuarios`, {nome: $('#n-nome-' + id).value, email: $('#n-mail-' + id).value});
+    mostrarSenha(id, d.usuario.email, d.senha_temporaria); await carregar();
+  },
+  async 'u-reset'(b) {
+    const d = await api('PUT', '/api/admin/usuarios/' + b.dataset.id, {resetar_senha: true});
+    const conta = b.closest('section'); const cid = conta.querySelector('[data-act="u-novo"]').dataset.id;
+    mostrarSenha(cid, d.usuario.email, d.senha_temporaria); await carregar();
+  },
+  async 'u-status'(b) { await api('PUT', '/api/admin/usuarios/' + b.dataset.id, {status: b.dataset.v}); await carregar(); },
+};
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-act]'); if (!b || !ACOES[b.dataset.act]) return;
+  try { await ACOES[b.dataset.act](b); } catch (err) { aviso(err.message); }
+});
+carregar().catch(e => { $('#lista').innerHTML = `<div class="aviso er">${esc(e.message)}</div>`; });
+</script>
+</body>
+</html>
