@@ -1,0 +1,76 @@
+{
+  "id": "nutri",
+  "cor": "#1e8e5a",
+  "nome": "CRM Nutri",
+  "modulos": ["registros", "ia"],
+  "visibilidade": "equipe",
+  "rotulos": {"cliente": "Paciente", "clientes": "Pacientes", "atendente": "Profissional"},
+  "campos_cliente": [
+    {"chave": "nascimento", "rotulo": "Nascimento", "tipo": "data"},
+    {"chave": "altura_cm", "rotulo": "Altura (cm)", "tipo": "numero", "min": 30, "max": 250},
+    {"chave": "objetivo", "rotulo": "Objetivo", "tipo": "select",
+     "opcoes": ["Emagrecimento", "Ganho de massa", "Reeducação alimentar", "Saúde / clínico", "Esportivo"]},
+    {"chave": "restricoes", "rotulo": "Alergias e restrições", "tipo": "textolongo"}
+  ],
+  "tipos_registro": [
+    {
+      "id": "consulta",
+      "rotulo": "Consulta",
+      "rotulo_plural": "Consultas",
+      "etapas": ["Agendada", "Realizada", "Faltou", "Cancelada"],
+      "etapas_finais": ["Realizada", "Faltou", "Cancelada"],
+      "data_ref": "data_consulta",
+      "valor": "valor",
+      "titulo": "modalidade",
+      "pagamentos": true,
+      "campos": [
+        {"chave": "data_consulta", "rotulo": "Data da consulta", "tipo": "data", "obrigatorio": true},
+        {"chave": "modalidade", "rotulo": "Tipo", "tipo": "select", "obrigatorio": true,
+         "opcoes": ["Primeira consulta", "Retorno", "Online"], "padrao": "Retorno"},
+        {"chave": "valor", "rotulo": "Valor", "tipo": "dinheiro"},
+        {"chave": "anotacoes", "rotulo": "Anotações", "tipo": "textolongo"}
+      ],
+      "lembretes": [
+        {"campo": "data_consulta", "dias_antes": 1, "titulo": "Confirmar consulta de {nome} amanhã"}
+      ]
+    },
+    {
+      "id": "medicao",
+      "rotulo": "Medição",
+      "rotulo_plural": "Medições",
+      "etapas": ["Registrada"],
+      "data_ref": "data_medicao",
+      "campos": [
+        {"chave": "data_medicao", "rotulo": "Data", "tipo": "data", "obrigatorio": true},
+        {"chave": "peso_kg", "rotulo": "Peso (kg)", "tipo": "numero", "min": 1, "max": 500, "passo": 0.1, "obrigatorio": true},
+        {"chave": "gordura_pct", "rotulo": "% de gordura", "tipo": "numero", "min": 0, "max": 100, "passo": 0.1},
+        {"chave": "cintura_cm", "rotulo": "Cintura (cm)", "tipo": "numero", "min": 10, "max": 300},
+        {"chave": "quadril_cm", "rotulo": "Quadril (cm)", "tipo": "numero", "min": 10, "max": 300},
+        {"chave": "obs", "rotulo": "Observações", "tipo": "textolongo"}
+      ]
+    },
+    {
+      "id": "plano",
+      "rotulo": "Plano alimentar",
+      "rotulo_plural": "Planos alimentares",
+      "etapas": ["Ativo", "Encerrado"],
+      "data_ref": "inicio",
+      "titulo": "nome_plano",
+      "campos": [
+        {"chave": "nome_plano", "rotulo": "Nome do plano", "tipo": "texto", "obrigatorio": true},
+        {"chave": "inicio", "rotulo": "Início", "tipo": "data", "obrigatorio": true},
+        {"chave": "fim", "rotulo": "Término previsto", "tipo": "data"},
+        {"chave": "kcal", "rotulo": "Meta diária (kcal)", "tipo": "numero", "min": 500, "max": 10000},
+        {"chave": "orientacoes", "rotulo": "Orientações", "tipo": "textolongo"}
+      ],
+      "lembretes": [
+        {"campo": "fim", "dias_antes": 3, "titulo": "Plano de {nome} termina em 3 dias — marcar retorno"}
+      ]
+    }
+  ],
+  "mensagens": {
+    "lembrete_consulta": "Oi {primeiro_nome}! Lembrando da sua consulta em {data}. Posso confirmar? — {atendente}",
+    "retorno": "Oi {primeiro_nome}, tudo bem? Que tal marcarmos seu retorno para acompanhar seus resultados? — {atendente}"
+  },
+  "ia": {"persona": "Você é secretária de um consultório de nutrição no Brasil: acolhedora, objetiva e sem dar orientação clínica."}
+}
