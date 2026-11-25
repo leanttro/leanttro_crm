@@ -1,10 +1,10 @@
 """Leanttro CRM — Flask + SQLAlchemy, um arquivo só.
 
-Nichos: NICHO=agencia (padrão, CRM de vendas) ou NICHO=otica|nutri|confeiteira|… → CRM focado,
-descrito por nichos/<NICHO>/nicho.json (campos, etapas, lembretes, mensagens). Ver README do nicho.
+Contas e nichos: um app só. Quem não tem conta usa o CRM de agência; quem tem conta (criada em /admin/contas)
+cai no painel do nicho da conta (nichos/<nicho>/nicho.json), com os dados isolados por conta.
 
 Dev:   python app.py                (HOST/PORT/DEBUG por env)
-Check: python app.py check-nicho    (valida o manifesto do NICHO atual)
+Check: python app.py check-nicho    (valida todos os nichos/*/nicho.json)
 Prod:  gunicorn app:app             (docker-entrypoint.sh roda `python app.py init-db` antes)
 CLI:   python app.py init-db
 Banco: SQLite em DATA_DIR/db.sqlite (Docker: volume /data). DATABASE_URL só se quiser Postgres.
@@ -64,8 +64,7 @@ DATA_DIR = Path(_env("DATA_DIR") or (BASE_DIR / "data")).resolve()
 TZ = ZoneInfo(_env("TZ_NAME") or "America/Sao_Paulo")
 SCHEMA_VERSAO = 2
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-NICHO = _env("NICHO") or "agencia"                 # qual CRM este deploy é (pasta em nichos/)
-NICHOS_DIR = BASE_DIR / "nichos"
+NICHOS_DIR = BASE_DIR / "nichos"                   # um nicho = uma pasta com nicho.json
 
 
 def _segredo(nome):
@@ -179,6 +178,7 @@ class User(db.Model):
     sessao_versao = db.Column(db.Integer, nullable=False, default=1)   # +1 derruba todas as sessões da pessoa
     criado_em = db.Column(db.DateTime, nullable=False, default=agora)
     ultimo_login = db.Column(db.DateTime)
+    conta_id = db.Column(db.Integer, db.ForeignKey("contas.id"), index=True)   # NULL = equipe da agência
 
     @property
     def is_admin(self):
@@ -313,6 +313,7 @@ class Cliente(db.Model):
     origem = db.Column(db.String(10), nullable=False, default="manual")  # manual | lead
     observacoes = db.Column(db.Text, nullable=False, default="")
     dados = db.Column(db.JSON)                                          # nichos: campos_cliente do manifesto
+    conta_id = db.Column(db.Integer, db.ForeignKey("contas.id"), index=True)   # nichos: a qual conta pertence
     criado_em = db.Column(db.DateTime, nullable=False, default=agora)
 
 
@@ -478,15 +479,28 @@ class TreinamentoProgresso(db.Model):
 
 # ═══════════════════════════════════════════════════════════════════════════
 # NICHOS (CRMs focados): modelos genéricos. O que cada nicho tem de diferente
-# mora em nichos/<NICHO>/nicho.json; aqui só existe a estrutura que serve a todos.
+# mora em nichos/<nicho>/nicho.json; aqui só existe a estrutura que serve a todos.
+#   Conta               = um cliente seu; escolhe o nicho; isola os dados
 #   Registro            = "o que acontece com o cliente" (consulta, receita, encomenda, ordem de serviço…)
 #   RegistroPagamento   = cobranças de um registro (sinal, restante, parcelas)
 #   RegistroHistorico   = linha do tempo do registro (notas e mudanças de etapa)
 # Regra: o que se filtra/ordena/soma é coluna (status, data_ref, valor_cent); o resto vai em `dados` (JSON).
 # ═══════════════════════════════════════════════════════════════════════════
+class Conta(db.Model):
+    """Um cliente seu (ex.: "Ótica Visão"). O nicho da conta define o painel de quem entra; os dados ficam isolados por conta.
+    Quem NÃO tem conta (você e seus vendedores) usa o CRM de agência."""
+    __tablename__ = "contas"
+    id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(120), nullable=False)
+    nicho = db.Column(db.String(40), nullable=False)                     # pasta em nichos/
+    ativo = db.Column(db.Boolean, nullable=False, default=True)          # False = suspensa: ninguém da conta entra
+    criado_em = db.Column(db.DateTime, nullable=False, default=agora)
+
+
 class Registro(db.Model):
     __tablename__ = "registros"
     id = db.Column(db.Integer, primary_key=True)
+    conta_id = db.Column(db.Integer, db.ForeignKey("contas.id"), index=True)   # isolamento entre clientes
     owner_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
     cliente_id = db.Column(db.Integer, db.ForeignKey("clientes.id", ondelete="CASCADE"), nullable=False, index=True)
     tipo = db.Column(db.String(40), nullable=False, index=True)          # id em tipos_registro do manifesto
@@ -851,6 +865,11 @@ def usuario_atual():
         if not u or u.status != "ativo" or u.sessao_versao != session.get("sv"):
             u = None
             session.pop("uid", None)
+    if u and u.conta_id:                                  # conta suspensa (ou apagada) = ninguém dela entra
+        c = db.session.get(Conta, u.conta_id)
+        if not c or not c.ativo:
+            u = None
+            session.pop("uid", None)
     g._u = u
     return u
 
@@ -875,7 +894,7 @@ def chave_do_vendedor(user, servico):
 
 def _user_json(u):
     return dict(id=u.id, nome=u.nome, email=u.email, papel=u.papel, status=u.status, telefone=u.telefone,
-                comissao_setup_pct=u.comissao_setup_pct, comissao_mensal_pct=u.comissao_mensal_pct,
+                comissao_setup_pct=u.comissao_setup_pct, comissao_mensal_pct=u.comissao_mensal_pct, conta_id=u.conta_id,
                 groq=mascarar(u.groq_key_enc), serper=mascarar(u.serper_key_enc),
                 ultimo_login=u.ultimo_login.isoformat() if u.ultimo_login else None)
 
@@ -898,10 +917,11 @@ def _aplicar_chaves(u, d):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# NICHOS: manifesto (nichos/<NICHO>/nicho.json), validação e regras genéricas
-#   NICHO=agencia (padrão) → CRM de vendas original, nada muda.
-#   NICHO=otica | nutri | confeiteira | … → CRM focado, descrito 100% pelo manifesto.
-# O manifesto é validado na subida: se estiver errado, o app não sobe e diz o motivo.
+# NICHOS: manifestos (nichos/<nicho>/nicho.json), validação e regras genéricas
+#   Sem conta  → CRM de agência (o original). Com conta → painel do nicho da conta.
+#   O admin cria a Conta (nome + nicho) e os acessos dela em /admin/contas.
+# Todos os manifestos são lidos e validados na subida. Nicho com erro NÃO derruba o app:
+# fica de fora da lista, o motivo aparece em /admin/contas e no log.
 # ═══════════════════════════════════════════════════════════════════════════
 TIPOS_CAMPO = ("texto", "textolongo", "numero", "dinheiro", "data", "select", "booleano")
 MODULOS_AGENCIA = ("vendas", "prospeccao", "projetos", "financeiro", "equipe", "ia")
@@ -1064,18 +1084,23 @@ def _validar_manifesto(m):
                 ia=dict(persona=ia.get("persona", "")[:300]))
 
 
-def carregar_nicho(nicho):
-    arq = NICHOS_DIR / nicho / "nicho.json"
-    if not re.fullmatch(r"[a-z0-9_-]{1,40}", nicho):
-        raise SystemExit(f"NICHO '{nicho}' inválido (use minúsculas, números, - e _).")
-    if not arq.is_file():
-        if nicho == "agencia":
-            return MANIFESTO_AGENCIA
-        raise SystemExit(f"Nicho '{nicho}' não encontrado. Crie o arquivo {arq}")
-    try:
-        return _validar_manifesto(json.loads(arq.read_text("utf-8")))
-    except ValueError as e:
-        raise SystemExit(f"Erro em {arq}: {e}")
+def carregar_todos():
+    """Lê todo nichos/*/nicho.json → ({id: manifesto}, {pasta: erro}). 'agencia' sempre existe."""
+    ok, erros = {"agencia": MANIFESTO_AGENCIA}, {}
+    if NICHOS_DIR.is_dir():
+        for pasta in sorted(NICHOS_DIR.iterdir()):
+            arq = pasta / "nicho.json"
+            if not pasta.is_dir() or not arq.is_file():
+                continue
+            try:
+                m = _validar_manifesto(json.loads(arq.read_text("utf-8")))
+                if m["id"] != pasta.name:
+                    raise ValueError(f"o 'id' ({m['id']}) precisa ser igual ao nome da pasta ({pasta.name}).")
+                ok[m["id"]] = m
+            except (ValueError, OSError) as e:          # JSON quebrado também cai aqui (JSONDecodeError é ValueError)
+                erros[pasta.name] = str(e)
+                print(f"AVISO: nicho '{pasta.name}' ignorado: {e}", file=sys.stderr)
+    return ok, erros
 
 
 def _valida_valor(c, v):
@@ -1235,17 +1260,49 @@ def sincronizar_lembretes(r, t, cliente):
                                      vence_em=quando, auto_chave=chave))
 
 
+NICHOS, NICHOS_ERRO = carregar_todos()
+MODULOS_EM_CONTA = {"registros", "ia"}      # contas de cliente nunca enxergam módulos de agência (dados globais)
+
+
+def nicho_serve_conta(m):
+    return "registros" in m["modulos"] and set(m["modulos"]) <= MODULOS_EM_CONTA
+
+
+def conta_do(u):
+    if not u or not u.conta_id:
+        return None
+    if "_conta" not in g:
+        g._conta = db.session.get(Conta, u.conta_id)
+    return g._conta
+
+
+def manifesto_do(u):
+    """Manifesto do painel desta pessoa. Sem conta = agência. None = nicho da conta sumiu ou está inválido."""
+    c = conta_do(u)
+    return NICHOS["agencia"] if not c else NICHOS.get(c.nicho)
+
+
+def modulos_do(u):
+    m = manifesto_do(u)
+    if m is None:
+        return set()
+    mods = set(m["modulos"])
+    return mods & MODULOS_EM_CONTA if (u and u.conta_id) else mods
+
+
+def nome_app_do(u):
+    c = conta_do(u)
+    return c.nome if c else NICHOS["agencia"]["nome"]
+
+
 def migrar():
     """Colunas novas em tabelas que já existiam (db.create_all só cria tabelas que faltam). Idempotente."""
+    _add_col("users", "conta_id", "INTEGER REFERENCES contas(id)")
     _add_col("clientes", "dados", "JSON")
+    _add_col("clientes", "conta_id", "INTEGER REFERENCES contas(id)")
+    _add_col("registros", "conta_id", "INTEGER REFERENCES contas(id)")
     _add_col("atividades", "registro_id", "INTEGER REFERENCES registros(id) ON DELETE CASCADE")
     _add_col("atividades", "auto_chave", "VARCHAR(80)")
-
-
-MANIFESTO = carregar_nicho(NICHO)
-MODULOS = set(MANIFESTO["modulos"])
-TIPOS = {t["id"]: t for t in MANIFESTO["tipos_registro"]}
-NOME_APP = _env("NEGOCIO_NOME") or MANIFESTO["nome"]
 
 
 def criar_app():
@@ -1272,7 +1329,8 @@ def criar_app():
 
     @app.context_processor
     def _ctx():
-        return dict(csrf=session.get("csrf", ""), usuario=usuario_atual(), app_nome=NOME_APP, nicho=MANIFESTO)
+        u = usuario_atual()
+        return dict(csrf=session.get("csrf", ""), usuario=u, app_nome=nome_app_do(u), nicho=manifesto_do(u))
 
     @app.before_request
     def _csrf():
@@ -1287,12 +1345,16 @@ def criar_app():
 
     @app.before_request
     def _modulos():
-        """Módulo desligado no manifesto = as rotas dele respondem 404 (o código de agência não existe na ótica)."""
+        """Cada pessoa só alcança as rotas dos módulos do seu painel (agência ou nicho da conta); o resto responde 404."""
         p = request.path
-        if not p.startswith("/api/"):
+        u = usuario_atual() if p.startswith("/api/") else None
+        if not u:
             return None
+        if manifesto_do(u) is None:
+            return jsonify(ok=False, erro="Painel indisponível: o nicho desta conta não está carregado. Fale com o administrador."), 503
+        mods = modulos_do(u)
         for mod, prefixos in MODULO_ROTAS.items():
-            if mod not in MODULOS and any(p == x or p.startswith(x + "/") for x in prefixos):
+            if mod not in mods and any(p == x or p.startswith(x + "/") for x in prefixos):
                 return jsonify(ok=False, erro="Recurso não disponível neste painel."), 404
 
     @app.after_request
@@ -1362,6 +1424,10 @@ def criar_app():
             return render_template("login.html", erro="E-mail ou senha incorretos."), 401
         if u.status != "ativo":
             return render_template("login.html", erro="Acesso desativado. Fale com o administrador."), 403
+        if u.conta_id:
+            conta = db.session.get(Conta, u.conta_id)
+            if not conta or not conta.ativo:
+                return render_template("login.html", erro="Esta conta está suspensa. Fale com o administrador."), 403
         session.clear()
         session.permanent = True
         session.update(uid=u.id, sv=u.sessao_versao, csrf=secrets.token_urlsafe(24))
@@ -1379,10 +1445,14 @@ def criar_app():
     @app.get("/app")
     @login_obrigatorio
     def painel():
-        if "registros" not in MODULOS:                       # CRM de agência (original)
+        u = usuario_atual()
+        m = manifesto_do(u)
+        if m is None:
+            return "Painel indisponível: o nicho desta conta não está carregado. Fale com o administrador.", 503
+        if "registros" not in modulos_do(u):                 # sem conta: CRM de agência (original)
             return render_template("app.html")
-        # nicho: usa templates/nichos/<NICHO>/app.html se existir, senão o painel genérico
-        return render_template([f"nichos/{NICHO}/app.html", "app_generico.html"])
+        # conta de nicho: templates/nichos/<nicho>/app.html se existir, senão o painel genérico
+        return render_template([f"nichos/{m['id']}/app.html", "app_generico.html"])
 
     @app.route("/conta/senha", methods=["GET", "POST"])
     @login_obrigatorio
@@ -1422,7 +1492,7 @@ def criar_app():
     @app.get("/api/admin/usuarios")
     @admin_obrigatorio
     def admin_usuarios():
-        return jsonify(ok=True, usuarios=[_user_json(u) for u in db.session.scalars(select(User).order_by(User.nome))])
+        return jsonify(ok=True, usuarios=[_user_json(u) for u in db.session.scalars(select(User).where(User.conta_id.is_(None)).order_by(User.nome))])
 
     @app.post("/api/admin/usuarios")
     @admin_obrigatorio
@@ -1456,6 +1526,8 @@ def criar_app():
         if not u:
             abort(404)
         eu = usuario_atual()
+        if u.conta_id and d.get("papel") == "admin":
+            return _erro("Usuário de conta de cliente não pode ser administrador da plataforma.")
         if u.id == eu.id and (d.get("status") == "bloqueado" or d.get("papel") == "vendedor"):
             return _erro("Você não pode bloquear nem rebaixar o próprio acesso.")
         try:
@@ -2120,7 +2192,7 @@ def criar_app():
 
     def _cliente_meu(cid):
         c, u = db.session.get(Cliente, cid), usuario_atual()
-        if not c or (c.owner_id != u.id and not u.is_admin):
+        if not c or c.conta_id is not None or (c.owner_id != u.id and not u.is_admin):
             abort(404)
         return c
 
@@ -2153,7 +2225,7 @@ def criar_app():
     @app.get("/api/clientes")
     @login_obrigatorio
     def api_clientes():
-        stmt = escopo(select(Cliente), Cliente.owner_id, equipe=request.args.get("equipe") == "1")
+        stmt = escopo(select(Cliente), Cliente.owner_id, equipe=request.args.get("equipe") == "1").where(Cliente.conta_id.is_(None))
         return jsonify(ok=True, clientes=[_cli_json(c) for c in db.session.scalars(stmt.order_by(Cliente.empresa).limit(300))])
 
     @app.post("/api/clientes")
@@ -2490,28 +2562,127 @@ def criar_app():
         return send_from_directory(DATA_DIR / "uploads", x.arquivo, as_attachment=True)
 
     # ═══════════════════════════════════════════════════════════════════════
-    # NICHOS: API genérica (clientes + registros guiados pelo manifesto)
-    #   Só existe quando o módulo "registros" está ligado (senão /api/n/* responde 404).
+    # ADMIN: contas (clientes seus) e acessos delas. Só o administrador da plataforma (quem não tem conta).
     # ═══════════════════════════════════════════════════════════════════════
+    def _conta_json(c):
+        us = db.session.scalars(select(User).where(User.conta_id == c.id).order_by(User.nome))
+        return dict(id=c.id, nome=c.nome, nicho=c.nicho, nicho_ok=c.nicho in NICHOS, ativo=c.ativo,
+                    usuarios=[_user_json(x) for x in us], criado_em=_fmt(c.criado_em))
+
+    def _nicho_valido_p_conta(nid):
+        m = NICHOS.get(nid)
+        if m is None:
+            raise ValueError("Esse nicho não existe ou está com erro no nicho.json.")
+        if not nicho_serve_conta(m):
+            raise ValueError("Esse nicho usa módulos de agência e não pode ser vinculado a uma conta.")
+        return nid
+
+    @app.get("/admin/contas")
+    @login_obrigatorio
+    def pagina_contas():
+        if not usuario_atual().is_admin:
+            return redirect("/app")
+        return render_template("contas.html")
+
+    @app.get("/api/admin/contas")
+    @admin_obrigatorio
+    def admin_contas():
+        contas = db.session.scalars(select(Conta).order_by(Conta.nome))
+        return jsonify(ok=True, contas=[_conta_json(c) for c in contas],
+                       nichos=[dict(id=k, nome=v["nome"], cor=v["cor"]) for k, v in NICHOS.items() if nicho_serve_conta(v)],
+                       nichos_com_erro=NICHOS_ERRO)
+
+    @app.post("/api/admin/contas")
+    @admin_obrigatorio
+    def admin_conta_criar():
+        d = _json()
+        try:
+            c = Conta(nome=_txt(d, "nome", 120, True, "Nome do negócio"), nicho=_nicho_valido_p_conta(d.get("nicho")))
+        except ValueError as e:
+            return _erro(str(e))
+        db.session.add(c)
+        db.session.commit()
+        return jsonify(ok=True, conta=_conta_json(c))
+
+    @app.put("/api/admin/contas/<int:cid>")
+    @admin_obrigatorio
+    def admin_conta_editar(cid):
+        c, d = db.session.get(Conta, cid), _json()
+        if not c:
+            abort(404)
+        try:
+            if "nome" in d:
+                c.nome = _txt(d, "nome", 120, True, "Nome do negócio")
+            if "ativo" in d:
+                c.ativo = bool(d["ativo"])
+            if "nicho" in d and d["nicho"] != c.nicho:
+                tem_dados = db.session.scalar(select(func.count()).select_from(Cliente).where(Cliente.conta_id == c.id))
+                if tem_dados:
+                    raise ValueError("Esta conta já tem dados. Trocar o nicho deixaria registros sem painel. Crie uma conta nova.")
+                c.nicho = _nicho_valido_p_conta(d["nicho"])
+        except ValueError as e:
+            db.session.rollback()
+            return _erro(str(e))
+        db.session.commit()
+        return jsonify(ok=True, conta=_conta_json(c))
+
+    @app.post("/api/admin/contas/<int:cid>/usuarios")
+    @admin_obrigatorio
+    def admin_conta_usuario(cid):
+        c, d = db.session.get(Conta, cid), _json()
+        if not c:
+            abort(404)
+        nome, email = (d.get("nome") or "").strip()[:80], _norm(d.get("email"))
+        if not nome or not EMAIL_RE.match(email):
+            return _erro("Informe nome e e-mail válido.")
+        temp = secrets.token_urlsafe(9)
+        try:
+            u = User(nome=nome, email=email, email_norm=email, papel="vendedor", conta_id=c.id,
+                     telefone=(d.get("telefone") or "")[:30] or None,
+                     senha_hash=generate_password_hash(temp), trocar_senha=True)
+            db.session.add(u)
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            return _erro("Já existe um usuário com esse e-mail.", 409)
+        return jsonify(ok=True, usuario=_user_json(u), senha_temporaria=temp)      # só aparece desta vez
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # NICHOS: API genérica (clientes + registros guiados pelo manifesto da CONTA de quem está logado)
+    #   Tudo é filtrado pela conta: um cliente seu nunca enxerga dados de outro.
+    #   Só existe para quem tem conta (para os demais /api/n/* responde 404).
+    # ═══════════════════════════════════════════════════════════════════════
+    def _M():
+        return manifesto_do(usuario_atual())
+
+    def _tipos():
+        return {t["id"]: t for t in _M()["tipos_registro"]}
+
     def _n_equipe():
-        return MANIFESTO["visibilidade"] == "equipe"
+        return _M()["visibilidade"] == "equipe"
 
-    def _n_visivel(stmt, coluna):
-        return stmt if _n_equipe() else escopo(stmt, coluna, equipe=request.args.get("equipe") == "1")
-
-    def _n_pode(owner_id):
+    def _n_visivel(stmt, modelo):
+        """modelo = Cliente ou Registro. Sempre dentro da conta; se a visibilidade for 'proprio', só o que a pessoa criou."""
         u = usuario_atual()
-        return _n_equipe() or u.is_admin or owner_id == u.id
+        stmt = stmt.where(modelo.conta_id == u.conta_id)
+        return stmt if _n_equipe() else stmt.where(modelo.owner_id == u.id)
+
+    def _n_pode(obj):
+        u = usuario_atual()
+        return obj.conta_id == u.conta_id and (_n_equipe() or obj.owner_id == u.id)
+
+    def _n_ids_users():
+        return select(User.id).where(User.conta_id == usuario_atual().conta_id)
 
     def _n_cliente(cid):
         c = db.session.get(Cliente, cid)
-        if not c or not _n_pode(c.owner_id):
+        if not c or not _n_pode(c):
             abort(404)
         return c
 
     def _n_registro(rid):
         r = db.session.get(Registro, rid)
-        if not r or not _n_pode(r.owner_id):
+        if not r or not _n_pode(r):
             abort(404)
         return r
 
@@ -2534,6 +2705,7 @@ def criar_app():
                     cliente_id=a.cliente_id, cliente_nome=cliente_nome, registro_id=a.registro_id)
 
     def _n_preencher_cliente(c, d, novo=False):
+        campos = _M()["campos_cliente"]
         c.empresa = _txt(d, "nome", 160, novo or "nome" in d, "Nome") or c.empresa
         for campo, n in (("telefone", 40), ("documento", 20), ("endereco", 300)):
             if campo in d:
@@ -2548,21 +2720,21 @@ def criar_app():
         if novo or isinstance(d.get("dados"), dict):
             entrada = d.get("dados") if isinstance(d.get("dados"), dict) else {}
             if novo:
-                entrada = {**padroes(MANIFESTO["campos_cliente"]), **entrada}
-            c.dados = validar_dados(MANIFESTO["campos_cliente"], entrada, c.dados)
+                entrada = {**padroes(campos), **entrada}
+            c.dados = validar_dados(campos, entrada, c.dados)
 
     @app.get("/api/n/schema")
     @login_obrigatorio
     def n_schema():
         u = usuario_atual()
-        return jsonify(ok=True, nicho=MANIFESTO, app_nome=NOME_APP,
+        return jsonify(ok=True, nicho=_M(), app_nome=nome_app_do(u),
                        usuario=dict(id=u.id, nome=u.nome, admin=u.is_admin))
 
     # ── clientes ───────────────────────────────────────────────────────────
     @app.get("/api/n/clientes")
     @login_obrigatorio
     def n_clientes():
-        stmt = _n_visivel(select(Cliente), Cliente.owner_id)
+        stmt = _n_visivel(select(Cliente), Cliente)
         q = (request.args.get("q") or "").strip()[:80]
         if q:
             stmt = stmt.where(or_(Cliente.empresa.icontains(q, autoescape=True),
@@ -2574,7 +2746,8 @@ def criar_app():
     @app.post("/api/n/clientes")
     @login_obrigatorio
     def n_cliente_criar():
-        c = Cliente(owner_id=usuario_atual().id, empresa="", origem="manual")
+        u = usuario_atual()
+        c = Cliente(owner_id=u.id, conta_id=u.conta_id, empresa="", origem="manual")
         try:
             _n_preencher_cliente(c, _json(), novo=True)
         except ValueError as e:
@@ -2609,11 +2782,11 @@ def criar_app():
         return jsonify(ok=True, cliente=_n_cli_json(c))
 
     @app.delete("/api/n/clientes/<int:cid>")
-    @admin_obrigatorio
+    @login_obrigatorio
     def n_cliente_apagar(cid):
         c = _n_cliente(cid)
         if db.session.scalar(select(func.count()).select_from(Registro).where(Registro.cliente_id == c.id)):
-            return _erro("Este cliente tem registros. Apague-os primeiro.", 409)
+            return _erro("Este cadastro tem registros. Apague-os primeiro.", 409)
         db.session.delete(c)
         db.session.commit()
         return jsonify(ok=True)
@@ -2623,7 +2796,7 @@ def criar_app():
     @login_obrigatorio
     def n_registros():
         a = request.args
-        stmt = _n_visivel(select(Registro, Cliente.empresa).join(Cliente, Cliente.id == Registro.cliente_id), Registro.owner_id)
+        stmt = _n_visivel(select(Registro, Cliente.empresa).join(Cliente, Cliente.id == Registro.cliente_id), Registro)
         try:
             if a.get("tipo"):
                 stmt = stmt.where(Registro.tipo == a["tipo"])
@@ -2639,7 +2812,7 @@ def criar_app():
             return _erro("Filtro inválido.")
         if a.get("abertos") == "1":
             stmt = stmt.where(or_(*[and_(Registro.tipo == t["id"], Registro.status.notin_(t["etapas_finais"]))
-                                    for t in MANIFESTO["tipos_registro"]]))
+                                    for t in _M()["tipos_registro"]]))
         ordem = Registro.data_ref.asc() if a.get("ordem") == "asc" else Registro.data_ref.desc()
         rows = db.session.execute(stmt.order_by(ordem, Registro.id.desc()).limit(500))
         return jsonify(ok=True, registros=[_n_reg_json(r, nome) for r, nome in rows])
@@ -2649,14 +2822,14 @@ def criar_app():
     def n_registro_criar():
         d, u = _json(), usuario_atual()
         try:
-            t = TIPOS.get(d.get("tipo"))
+            t = _tipos().get(d.get("tipo"))
             if not t:
                 raise ValueError("Tipo de registro inválido.")
-            c = _n_cliente(_int_id(d.get("cliente_id"), "Cliente"))
+            c = _n_cliente(_int_id(d.get("cliente_id"), "Cadastro"))
             status = d.get("status") or t["etapas"][0]
             if status not in t["etapas"]:
                 raise ValueError("Etapa inválida.")
-            r = Registro(owner_id=u.id, cliente_id=c.id, tipo=t["id"], status=status)
+            r = Registro(owner_id=u.id, conta_id=u.conta_id, cliente_id=c.id, tipo=t["id"], status=status)
             entrada = d.get("dados") if isinstance(d.get("dados"), dict) else {}
             r.dados = validar_dados(t["campos"], {**padroes(t["campos"]), **entrada}, None)
             derivar_colunas(r, t)
@@ -2688,7 +2861,7 @@ def criar_app():
     @login_obrigatorio
     def n_registro_editar(rid):
         r, d, u = _n_registro(rid), _json(), usuario_atual()
-        t = TIPOS.get(r.tipo)
+        t = _tipos().get(r.tipo)
         if not t:
             return _erro("Este tipo de registro não existe mais no manifesto do nicho.", 409)
         if "versao" in d and d["versao"] != r.versao:
@@ -2715,9 +2888,7 @@ def criar_app():
     @app.delete("/api/n/registros/<int:rid>")
     @login_obrigatorio
     def n_registro_apagar(rid):
-        r, u = _n_registro(rid), usuario_atual()
-        if not u.is_admin and r.owner_id != u.id:
-            return _erro("Só quem criou ou o administrador pode apagar.", 403)
+        r = _n_registro(rid)
         db.session.delete(r)
         db.session.commit()
         return jsonify(ok=True)
@@ -2740,7 +2911,7 @@ def criar_app():
     @login_obrigatorio
     def n_pg_criar(rid):
         r, d = _n_registro(rid), _json()
-        t = TIPOS.get(r.tipo)
+        t = _tipos().get(r.tipo)
         try:
             if not t or not t["pagamentos"]:
                 raise ValueError("Este tipo de registro não usa pagamentos.")
@@ -2760,7 +2931,7 @@ def criar_app():
         p = db.session.get(RegistroPagamento, pid)
         if not p:
             abort(404)
-        _n_registro(p.registro_id)
+        _n_registro(p.registro_id)                 # herda a checagem de conta do registro
         return p
 
     @app.post("/api/n/pagamentos/<int:pid>/receber")
@@ -2788,6 +2959,10 @@ def criar_app():
         return jsonify(ok=True)
 
     # ── resumo e agenda ────────────────────────────────────────────────────
+    def _n_ativ_visiveis(stmt):
+        stmt = stmt.where(Atividade.user_id.in_(_n_ids_users()))
+        return stmt if _n_equipe() else stmt.where(Atividade.user_id == usuario_atual().id)
+
     @app.get("/api/n/resumo")
     @login_obrigatorio
     def n_resumo():
@@ -2795,9 +2970,9 @@ def criar_app():
         mes_ini = hj.replace(day=1)
         mes_fim = _add_meses(mes_ini, 1)
         tipos = []
-        for t in MANIFESTO["tipos_registro"]:
+        for t in _M()["tipos_registro"]:
             stmt = _n_visivel(select(Registro.status, func.count(), func.coalesce(func.sum(Registro.valor_cent), 0))
-                              .where(Registro.tipo == t["id"]), Registro.owner_id).group_by(Registro.status)
+                              .where(Registro.tipo == t["id"]), Registro).group_by(Registro.status)
             linhas = {s: (n, int(v)) for s, n, v in db.session.execute(stmt)}
             etapas = [dict(etapa=e, qtd=linhas.get(e, (0, 0))[0], valor_cent=linhas.get(e, (0, 0))[1],
                            final=e in t["etapas_finais"]) for e in t["etapas"]]
@@ -2809,7 +2984,7 @@ def criar_app():
         def soma(expr, *filtros):
             q = (select(func.coalesce(func.sum(expr), 0)).select_from(P)
                  .join(Registro, Registro.id == P.registro_id).where(*filtros))
-            return int(db.session.scalar(_n_visivel(q, Registro.owner_id)))
+            return int(db.session.scalar(_n_visivel(q, Registro)))
 
         financeiro = dict(
             previsto_mes_cent=soma(P.valor_cent, P.vence_em >= mes_ini, P.vence_em < mes_fim),
@@ -2818,20 +2993,19 @@ def criar_app():
             a_receber_cent=soma(P.valor_cent - P.valor_recebido_cent, P.valor_recebido_cent < P.valor_cent))
 
         proximos = []
-        for t in MANIFESTO["tipos_registro"]:
+        for t in _M()["tipos_registro"]:
             if not t["data_ref"]:
                 continue
             stmt = _n_visivel(select(Registro, Cliente.empresa).join(Cliente, Cliente.id == Registro.cliente_id)
                               .where(Registro.tipo == t["id"], Registro.data_ref >= hj,
-                                     Registro.status.notin_(t["etapas_finais"])), Registro.owner_id)
+                                     Registro.status.notin_(t["etapas_finais"])), Registro)
             proximos += [_n_reg_json(r, nome) for r, nome in
                          db.session.execute(stmt.order_by(Registro.data_ref, Registro.id).limit(8))]
         proximos.sort(key=lambda x: x["data_ref"])
 
-        pend = _n_visivel(select(func.count()).select_from(Atividade).where(
-            Atividade.registro_id.is_not(None), Atividade.feita_em.is_(None), Atividade.vence_em <= agora_local()),
-            Atividade.user_id)
-        clientes = db.session.scalar(_n_visivel(select(func.count()).select_from(Cliente), Cliente.owner_id))
+        pend = _n_ativ_visiveis(select(func.count()).select_from(Atividade).where(
+            Atividade.registro_id.is_not(None), Atividade.feita_em.is_(None), Atividade.vence_em <= agora_local()))
+        clientes = db.session.scalar(_n_visivel(select(func.count()).select_from(Cliente), Cliente))
         return jsonify(ok=True, clientes=clientes, tipos=tipos, financeiro=financeiro, proximos=proximos[:8],
                        lembretes_pendentes=db.session.scalar(pend))
 
@@ -2845,7 +3019,7 @@ def criar_app():
         stmt = (select(Atividade, Cliente.empresa).outerjoin(Cliente, Cliente.id == Atividade.cliente_id)
                 .where(Atividade.lead_id.is_(None), Atividade.feita_em.is_(None), Atividade.vence_em.is_not(None),
                        Atividade.vence_em <= agora_local() + timedelta(days=dias)))
-        rows = db.session.execute(_n_visivel(stmt, Atividade.user_id).order_by(Atividade.vence_em).limit(200))
+        rows = db.session.execute(_n_ativ_visiveis(stmt).order_by(Atividade.vence_em).limit(200))
         return jsonify(ok=True, atividades=[_n_ativ_json(a, nome) for a, nome in rows])
 
     @app.post("/api/n/atividades")
@@ -2863,7 +3037,7 @@ def criar_app():
                 r = _n_registro(_int_id(d["registro_id"], "Registro"))
                 c = db.session.get(Cliente, r.cliente_id)
             elif d.get("cliente_id") is not None:
-                c = _n_cliente(_int_id(d["cliente_id"], "Cliente"))
+                c = _n_cliente(_int_id(d["cliente_id"], "Cadastro"))
             a = Atividade(user_id=u.id, titulo=titulo, vence_em=vence, cliente_id=c.id if c else None,
                           registro_id=r.id if r else None)
             db.session.add(a)
@@ -2876,8 +3050,10 @@ def criar_app():
     @app.post("/api/n/atividades/<int:aid>/feita")
     @login_obrigatorio
     def n_ativ_feita(aid):
+        u = usuario_atual()
         a, d = db.session.get(Atividade, aid), _json()
-        if not a or not _n_pode(a.user_id):
+        dono = db.session.get(User, a.user_id) if a else None
+        if not a or not dono or dono.conta_id != u.conta_id or not (_n_equipe() or a.user_id == u.id):
             abort(404)
         a.feita_em = agora() if d.get("feita", True) else None
         db.session.commit()
@@ -2885,24 +3061,24 @@ def criar_app():
 
     # ── mensagens (modelos do manifesto) e IA ──────────────────────────────
     def _n_ctx_msg(c, r=None):
-        u = usuario_atual()
-        ctx = dict(dados_legiveis(MANIFESTO["campos_cliente"], c.dados))
-        if r and TIPOS.get(r.tipo):
-            ctx.update(dados_legiveis(TIPOS[r.tipo]["campos"], r.dados))
+        u, M = usuario_atual(), _M()
+        ctx = dict(dados_legiveis(M["campos_cliente"], c.dados))
+        if r and _tipos().get(r.tipo):
+            ctx.update(dados_legiveis(_tipos()[r.tipo]["campos"], r.dados))
         ctx.update(nome=c.empresa, primeiro_nome=(c.empresa.split() or [""])[0], telefone=c.telefone or "",
-                   atendente=u.nome, negocio=NOME_APP)
+                   atendente=u.nome, negocio=nome_app_do(u))
         if r:
             ctx.update(titulo=r.titulo, status=r.status, valor=_brl(r.valor_cent), data=_data_br(r.data_ref))
         return ctx
 
     def _n_alvo(d):
-        """cliente (+ registro opcional) citados no corpo da requisição."""
-        c = _n_cliente(_int_id(d.get("cliente_id"), "Cliente"))
+        """cadastro (+ registro opcional) citados no corpo da requisição."""
+        c = _n_cliente(_int_id(d.get("cliente_id"), "Cadastro"))
         r = None
         if d.get("registro_id") is not None:
             r = _n_registro(_int_id(d["registro_id"], "Registro"))
             if r.cliente_id != c.id:
-                raise ValueError("Esse registro é de outro cliente.")
+                raise ValueError("Esse registro é de outro cadastro.")
         return c, r
 
     @app.post("/api/n/mensagem")
@@ -2911,7 +3087,7 @@ def criar_app():
         d = _json()
         try:
             c, r = _n_alvo(d)
-            modelo = MANIFESTO["mensagens"].get(d.get("modelo"))
+            modelo = _M()["mensagens"].get(d.get("modelo"))
             if modelo is None:
                 raise ValueError("Modelo de mensagem inexistente.")
         except ValueError as e:
@@ -2933,9 +3109,10 @@ def criar_app():
             return _erro("Cadastre a chave Groq em Perfil (ou peça ao administrador para definir GROQ_API_KEY).")
         if not limitar(f"groq:{u.id}", 60, 3600):
             return _erro("Limite de 60 mensagens por hora atingido.", 429)
+        M = _M()
         canal = "e-mail" if d.get("canal") == "email" else "WhatsApp"
         ctx = _n_ctx_msg(c, r)
-        base = MANIFESTO["mensagens"].get(d.get("modelo"))
+        base = M["mensagens"].get(d.get("modelo"))
         if base:
             prompt = (f"Reescreva esta mensagem de {canal} em português do Brasil, natural e curta (até 90 palavras), "
                       f"mantendo exatamente os mesmos fatos (nomes, datas e valores):\n\n{_preencher(base, ctx)}")
@@ -2943,10 +3120,10 @@ def criar_app():
             # LGPD: só vão para o provedor de IA nome e fatos básicos do registro, nunca o conteúdo de `dados`.
             fatos = "".join(f" {k}: {ctx[k]}." for k in ("titulo", "status", "data", "valor") if r and ctx.get(k))
             prompt = (f"Escreva uma mensagem de {canal} em português do Brasil, curta (até 90 palavras), cordial e sem "
-                      f"exageros, para {c.empresa}.{fatos} Assine como {u.nome} ({NOME_APP}). Não invente dados.")
+                      f"exageros, para {c.empresa}.{fatos} Assine como {u.nome} ({nome_app_do(u)}). Não invente dados.")
         if instrucao:
             prompt += f" Instrução adicional: {instrucao}"
-        persona = MANIFESTO["ia"]["persona"] or "Você é atendente de um pequeno negócio brasileiro, cordial e objetivo."
+        persona = M["ia"]["persona"] or "Você é atendente de um pequeno negócio brasileiro, cordial e objetivo."
         try:
             texto = groq_texto(chave, prompt, persona + " Responda apenas com o texto da mensagem.")
         except RuntimeError as e:
@@ -3021,10 +3198,14 @@ if __name__ == "__main__":
         init_db()
         print("banco ok")
     elif cmd == "check-nicho":
-        print(f"nicho '{MANIFESTO['id']}' ok · módulos: {', '.join(MANIFESTO['modulos'])}")
-        for t in MANIFESTO["tipos_registro"]:
-            print(f"  - {t['id']}: {len(t['campos'])} campos · etapas: {' > '.join(t['etapas'])}"
-                  f"{' · pagamentos' if t['pagamentos'] else ''}{' · ' + str(len(t['lembretes'])) + ' lembrete(s)' if t['lembretes'] else ''}")
+        for nid, m in NICHOS.items():
+            print(f"ok   {nid}: módulos {', '.join(m['modulos'])}" + ("" if nicho_serve_conta(m) else "  (só para quem não tem conta)"))
+            for t in m["tipos_registro"]:
+                print(f"       - {t['id']}: {len(t['campos'])} campos · etapas: {' > '.join(t['etapas'])}"
+                      f"{' · pagamentos' if t['pagamentos'] else ''}{' · ' + str(len(t['lembretes'])) + ' lembrete(s)' if t['lembretes'] else ''}")
+        for pasta, erro in NICHOS_ERRO.items():
+            print(f"ERRO {pasta}: {erro}")
+        sys.exit(1 if NICHOS_ERRO else 0)
     elif cmd == "run":
         init_db()
         app.run(host=_env("HOST") or "127.0.0.1", port=_int("PORT", 8000), debug=DEBUG)
