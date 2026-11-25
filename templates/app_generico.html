@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="{{ nicho.cor }}">
+<title>{{ app_nome }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--roxo:{{ nicho.cor }};--roxo-esc:color-mix(in srgb,var(--roxo) 78%,#000);--roxo-claro:color-mix(in srgb,var(--roxo) 14%,#fff);--lavanda:color-mix(in srgb,var(--roxo) 7%,#fff);--borda-suave:color-mix(in srgb,var(--roxo) 18%,#fff);--tinta:#071421;--escuro:#14101f;--linha:#dfe6e9;--mudo:#425064;--fundo:#fafafa;--card:#fff;--ok:#1e8e5a;--aviso:#b7791f;--erro:#c0392b;--r:13px;--sombra:0 5px 15px #0a1a2510}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{min-height:100vh;background:linear-gradient(110deg,var(--lavanda),var(--fundo)) fixed;color:#07111b;font:14px/1.5 "DM Sans",Arial,sans-serif;-webkit-tap-highlight-color:transparent}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--borda-suave);outline-offset:1px}
+.topbar{position:sticky;top:0;z-index:10;background:var(--roxo);color:#fff;box-shadow:0 2px 14px #0002;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:env(safe-area-inset-top,0px) 32px 0;min-height:68px}
+.marca{font-weight:800;font-size:21px;letter-spacing:-.8px;color:#fff;text-decoration:none}
+.burger{display:none;align-items:center;justify-content:center;width:42px;height:42px;border:0;border-radius:10px;background:#ffffff24;color:#fff;cursor:pointer}
+.burger svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round}
+nav{display:flex;align-items:center;gap:4px;flex-wrap:wrap;justify-content:flex-end}
+nav a{color:#fff;text-decoration:none;font-size:14px;font-weight:600;padding:8px 14px;border-radius:22px}
+nav a:hover{background:#ffffff1f}
+nav a.on{background:var(--tinta)}
+@media(max-width:899px){
+  .topbar{padding:env(safe-area-inset-top,0px) 16px 0;min-height:60px}
+  .burger{display:inline-flex}
+  nav{display:none;position:absolute;top:100%;left:0;right:0;flex-direction:column;align-items:stretch;gap:4px;padding:12px 14px 18px;background:var(--escuro);border-radius:0 0 20px 20px;box-shadow:0 24px 40px -20px #000a}
+  nav.aberto{display:flex}
+  nav a{padding:13px 16px;border-radius:12px;font-size:15px;color:#e8e4f4}
+  nav a.on{background:var(--roxo);color:#fff}
+}
+main{max-width:1120px;margin:0 auto;padding:26px 16px 48px}
+@media(min-width:800px){main{padding:38px 24px 56px}}
+h1{font-size:clamp(25px,3.4vw,36px);font-weight:800;margin:0 0 6px;letter-spacing:-1.2px;line-height:1.08;color:var(--tinta)}
+h2{font-size:16px;font-weight:800;margin:0 0 12px;letter-spacing:-.3px;color:var(--tinta)}
+h3{margin:0}
+.sub{color:var(--mudo);font-size:15px;margin:0 0 22px;max-width:640px}
+.grid{display:grid;gap:16px;margin-bottom:16px}
+@media(min-width:800px){.grid.dois{grid-template-columns:1fr 1fr}}
+.card{background:var(--card);border:1px solid var(--linha);border-radius:var(--r);padding:20px;box-shadow:var(--sombra)}
+.card+.card{margin-top:16px}.grid .card+.card{margin-top:0}
+.vazio{color:var(--mudo);font-size:13px;padding:6px 0;margin:0}
+.linha{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--linha);font-weight:600}
+.linha:first-of-type{border-top:0}
+.linha small{display:block;color:var(--mudo);font-size:12px;font-weight:500}
+.linha.clic{cursor:pointer}.linha.clic:hover{background:var(--lavanda)}
+.chip{display:inline-block;padding:4px 10px;border-radius:30px;font-size:10.5px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;background:var(--roxo-claro);color:var(--roxo-esc);white-space:nowrap}
+.chip.ok{background:#e4f5ec;color:var(--ok)}.chip.av{background:#fbf1de;color:var(--aviso)}.chip.er{background:#fdecea;color:var(--erro)}
+.num{font-size:23px;font-weight:800;letter-spacing:-1px;color:var(--roxo-esc);line-height:1.1}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.kpis div{background:var(--lavanda);border:1px solid var(--borda-suave);border-radius:12px;padding:12px 14px}
+.kpis small{display:block;color:var(--mudo);font-size:11px;font-weight:700;margin-bottom:2px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:12px 20px;border:0;border-radius:10px;background:var(--roxo);color:#fff;font-weight:800;font-size:14px;cursor:pointer;text-decoration:none;box-shadow:0 8px 22px color-mix(in srgb,var(--roxo) 30%,transparent)}
+.btn:hover{filter:brightness(1.05)}
+.btn.sec{background:transparent;color:var(--roxo-esc);border:1px solid var(--roxo);box-shadow:none}
+.btn.sec:hover{background:var(--roxo-claro)}
+.btn.peq{padding:7px 13px;font-size:12px;border-radius:9px}
+.btn.perigo{color:var(--erro);border-color:var(--erro)}.btn.perigo:hover{background:#fdecea}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.atalhos,.acoes{display:flex;flex-wrap:wrap;gap:10px}
+.atalhos{margin-bottom:20px}.acoes{justify-content:flex-end}
+label{display:block;font-size:12px;font-weight:700;margin:10px 0 5px;color:var(--mudo)}
+input,select,textarea{width:100%;padding:11px 13px;border:1px solid var(--linha);border-radius:10px;background:#fff}
+textarea{resize:vertical}
+input:focus-visible,select:focus-visible,textarea:focus-visible{outline:0;border-color:var(--roxo);box-shadow:0 0 0 4px var(--borda-suave)}
+.chk{display:flex;align-items:center;gap:8px;font-size:14px;color:inherit;margin:4px 0}.chk input{width:auto}
+.aj{display:block;color:var(--mudo);font-size:11.5px;margin-top:3px}
+.form{display:grid;gap:0 12px}
+@media(min-width:600px){.form{grid-template-columns:1fr 1fr}}
+.full,.grp{grid-column:1/-1}
+.grp{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--roxo-esc);margin:16px 0 0;padding-top:12px;border-top:1px dashed var(--borda-suave)}
+.topo{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+.seg{display:inline-flex;border:1px solid var(--linha);border-radius:10px;overflow:hidden;background:#fff;flex-wrap:wrap}
+.seg button{border:0;background:none;padding:8px 14px;cursor:pointer;font-weight:800;color:var(--mudo);font-size:13px}
+.seg button.on{background:var(--roxo);color:#fff}
+.filtros{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+.quadro{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}
+.col{min-width:0;background:#fff;border:1px solid var(--linha);border-radius:var(--r);padding:14px;box-shadow:var(--sombra)}
+.col h3{font-size:13px;font-weight:800;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}
+.item{padding:10px 12px;border-radius:10px;background:var(--lavanda);border:1px solid var(--borda-suave);margin-bottom:6px;font-size:13px;font-weight:700;cursor:pointer}
+.item:hover{border-color:var(--roxo)}
+.item small{display:block;color:var(--mudo);font-weight:500;font-size:12px}
+dialog{border:0;border-radius:16px;padding:0;width:min(640px,94vw);max-height:92vh;overflow:auto;box-shadow:0 30px 80px -20px #000a;background:#fff;color:inherit}
+dialog::backdrop{background:#14101f88}
+.dlg{padding:22px}.dlg h2{font-size:20px;margin-bottom:4px}
+.rod{display:flex;gap:10px;justify-content:flex-end;margin-top:18px;flex-wrap:wrap}
+.sec-d{border-top:1px solid var(--linha);margin-top:20px;padding-top:14px}
+.aviso{background:var(--lavanda);border:1px solid var(--borda-suave);border-left:4px solid var(--roxo);border-radius:12px;padding:12px 14px;margin:12px 0;word-break:break-word}
+.aviso.er{border-left-color:var(--erro);background:#fdecea}
+dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:6px 14px}dt{color:var(--mudo);font-weight:600}dd{margin:0;font-weight:600}
+a{color:var(--roxo-esc)}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:28px;background:var(--escuro);color:#fff;padding:12px 18px;border-radius:12px;font-size:13px;font-weight:600;opacity:0;pointer-events:none;transition:opacity .2s;z-index:50;max-width:90vw}
+#toast.on{opacity:1}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <a class="marca" href="#inicio">{{ app_nome }}</a>
+  <button class="burger" id="burger" type="button" aria-label="Abrir menu" aria-expanded="false" aria-controls="menu"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+  <nav id="menu" aria-label="Principal"></nav>
+</header>
+<main id="view" aria-live="polite"></main>
+<div id="toast" role="status"></div>
+<dialog id="dlg" aria-label="Detalhes"></dialog>
+
+<script>
+const N = {{ nicho|tojson }};
+const EU = {{ {'id': usuario.id, 'nome': usuario.nome, 'admin': usuario.is_admin}|tojson }};
+const CSRF = {{ csrf|tojson }};
+const TIPOS = Object.fromEntries(N.tipos_registro.map(t => [t.id, t]));
+const TEM_IA = N.modulos.includes('ia');
+const MSGS = Object.keys(N.mensagens);
+const R = N.rotulos;
+const PAGINAS = [['inicio', 'Início'], ['clientes', R.clientes]]
+  .concat(N.tipos_registro.map(t => ['t-' + t.id, t.rotulo_plural]))
+  .concat([['agenda', 'Agenda'], ['perfil', EU.admin ? 'Gestão' : 'Perfil']]);
+
+/* ---------- utilidades ---------- */
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const reais = c => ((c || 0) / 100).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'});
+const emReais = c => (c || c === 0) ? (c / 100).toFixed(2).replace('.', ',') : '';
+const dataBR = iso => iso ? iso.slice(0, 10).split('-').reverse().join('/') : '—';
+const horaBR = iso => iso && iso.length > 10 && iso.slice(11, 16) !== '00:00' ? ' ' + iso.slice(11, 16) : '';
+const num = (v, nome) => { const n = Number(String(v).replace(',', '.')); if (!isFinite(n)) throw new Error(nome + ' deve ser um número.'); return n; };
+const cent = v => {
+  let t = String(v ?? '').replace(/[R$\s]/g, '');
+  if (!t) return 0;
+  if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
+  else if (/\.\d{3}(\.|$)/.test(t)) t = t.replace(/\./g, '');
+  const n = Number(t);
+  if (!isFinite(n) || n < 0) throw new Error('Valor inválido.');
+  return Math.round(n * 100);
+};
+const vazio = t => `<p class="vazio">${t}</p>`;
+async function api(metodo, url, corpo) {
+  const r = await fetch(url, {method: metodo, headers: {'Content-Type': 'application/json', 'X-CSRF': CSRF}, body: corpo ? JSON.stringify(corpo) : undefined});
+  let d = {};
+  try { d = await r.json(); } catch (e) {}
+  if (r.status === 401) { location.href = '/login'; throw new Error('Faça login.'); }
+  if (!r.ok || d.ok === false) throw new Error(d.erro || 'Erro ' + r.status);
+  return d;
+}
+let _t;
+function aviso(msg) {
+  const t = $('#toast'); t.textContent = msg; t.classList.add('on');
+  clearTimeout(_t); _t = setTimeout(() => t.classList.remove('on'), 3400);
+}
+const dlg = $('#dlg');
+const abrir = html => { dlg.innerHTML = `<div class="dlg">${html}</div>`; if (!dlg.open) dlg.showModal(); };
+const fechar = () => { if (dlg.open) dlg.close(); };
+const chipPg = s => `<span class="chip ${s === 'pago' ? 'ok' : s === 'atrasado' ? 'er' : s === 'parcial' ? 'av' : ''}">${esc(s)}</span>`;
+const chipSt = (t, s) => `<span class="chip ${t && t.etapas_finais.includes(s) ? 'ok' : ''}">${esc(s)}</span>`;
+
+/* ---------- formulários gerados do manifesto ---------- */
+function campoHTML(c, v, pre) {
+  const id = pre + c.chave, val = v ?? '';
+  const ph = c.placeholder ? ` placeholder="${esc(c.placeholder)}"` : '';
+  let ctl;
+  if (c.tipo === 'textolongo') ctl = `<textarea id="${id}" rows="3" maxlength="${c.max || 4000}"${ph}>${esc(val)}</textarea>`;
+  else if (c.tipo === 'select') ctl = `<select id="${id}"><option value=""></option>${c.opcoes.map(o => `<option ${o === val ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
+  else if (c.tipo === 'data') ctl = `<input id="${id}" type="date" value="${esc(val)}">`;
+  else if (c.tipo === 'booleano') ctl = `<label class="chk" style="margin-top:0"><input id="${id}" type="checkbox" ${val === true ? 'checked' : ''}> Sim</label>`;
+  else if (c.tipo === 'dinheiro') ctl = `<input id="${id}" inputmode="decimal" placeholder="0,00" value="${val !== '' ? emReais(val) : ''}">`;
+  else if (c.tipo === 'numero') ctl = `<input id="${id}" inputmode="decimal"${ph} value="${esc(String(val).replace('.', ','))}">`;
+  else ctl = `<input id="${id}" maxlength="${c.max || 200}"${ph} value="${esc(val)}">`;
+  return `<div class="${c.tipo === 'textolongo' ? 'full' : ''}"><label for="${id}">${esc(c.rotulo)}${c.obrigatorio ? ' *' : ''}</label>${ctl}${c.ajuda ? `<small class="aj">${esc(c.ajuda)}</small>` : ''}</div>`;
+}
+function camposHTML(campos, dados, pre) {
+  let html = '', grupo = null;
+  for (const c of campos) {
+    if ((c.grupo || null) !== grupo) { grupo = c.grupo || null; if (grupo) html += `<h3 class="grp">${esc(grupo)}</h3>`; }
+    html += campoHTML(c, (dados || {})[c.chave], pre);
+  }
+  return html;
+}
+function lerCampos(campos, pre) {
+  const out = {};
+  for (const c of campos) {
+    const el = $('#' + pre + c.chave);
+    if (!el) continue;
+    if (c.tipo === 'booleano') { out[c.chave] = el.checked; continue; }
+    const v = el.value.trim();
+    out[c.chave] = v === '' ? null : c.tipo === 'dinheiro' ? cent(v) : c.tipo === 'numero' ? num(v, c.rotulo) : v;
+  }
+  return out;
+}
+const erroDlg = msg => { let e = $('#d-erro'); if (!e) { dlg.querySelector('.rod')?.insertAdjacentHTML('beforebegin', '<div id="d-erro" class="aviso er" role="alert"></div>'); e = $('#d-erro'); } if (e) e.textContent = msg; else aviso(msg); };
+
+/* ---------- páginas ---------- */
+let FILTRO = {}, CLI = null, REG = null, AGENDA_DIAS = 30;
+const VIEWS = {
+  async inicio(el) {
+    const d = await api('GET', '/api/n/resumo');
+    const f = d.financeiro, hora = new Date().getHours();
+    const temPg = N.tipos_registro.some(t => t.pagamentos);
+    el.innerHTML = `<h1>${hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite'}, ${esc(EU.nome.split(' ')[0])}</h1>
+      <p class="sub">${d.lembretes_pendentes ? `Você tem <a href="#agenda"><b>${d.lembretes_pendentes} lembrete${d.lembretes_pendentes > 1 ? 's' : ''}</b></a> para hoje ou atrasado${d.lembretes_pendentes > 1 ? 's' : ''}.` : 'Nenhum lembrete pendente. Tudo em dia.'}</p>
+      <div class="atalhos"><button class="btn" data-act="cli-novo">Novo ${esc(R.cliente.toLowerCase())}</button>
+        ${N.tipos_registro.map(t => `<a class="btn sec" href="#t-${t.id}">${esc(t.rotulo_plural)}</a>`).join('')}</div>
+      <div class="kpis" style="margin-bottom:16px">
+        <div><small>${esc(R.clientes)}</small><span class="num">${d.clientes}</span></div>
+        ${temPg ? `<div><small>Recebido no mês</small><span class="num">${reais(f.recebido_mes_cent)}</span></div>
+        <div><small>Previsto no mês</small><span class="num">${reais(f.previsto_mes_cent)}</span></div>
+        <div><small>A receber</small><span class="num">${reais(f.a_receber_cent)}</span></div>
+        <div><small>Em atraso</small><span class="num" style="color:${f.em_atraso_cent ? 'var(--erro)' : 'inherit'}">${reais(f.em_atraso_cent)}</span></div>` : ''}</div>
+      <div class="grid dois">
+        <section class="card"><h2>Em andamento</h2>
+          ${d.tipos.map(t => `<div class="linha clic" data-go="t-${t.id}"><div>${esc(t.rotulo_plural)}<small>${t.etapas.filter(e => !e.final && e.qtd).map(e => esc(e.etapa) + ': ' + e.qtd).join(' · ') || 'Nada em aberto'}</small></div><span class="chip">${t.em_aberto}</span></div>`).join('')}
+        </section>
+        <section class="card"><h2>Próximas datas</h2>
+          ${d.proximos.map(r => `<div class="linha clic" data-act="reg-abrir" data-id="${r.id}"><div>${esc(r.titulo)}<small>${esc(r.cliente_nome)} · ${dataBR(r.data_ref)}</small></div>${chipSt(TIPOS[r.tipo], r.status)}</div>`).join('') || vazio('Quando houver datas marcadas, aparecem aqui.')}
+        </section></div>`;
+  },
+
+  async clientes(el) {
+    const q = FILTRO.q || '';
+    const d = await api('GET', '/api/n/clientes' + (q ? '?q=' + encodeURIComponent(q) : ''));
+    el.innerHTML = `<div class="topo"><div><h1>${esc(R.clientes)}</h1></div><button class="btn" data-act="cli-novo">Novo ${esc(R.cliente.toLowerCase())}</button></div>
+      <div class="filtros"><input id="busca" type="search" placeholder="Buscar por nome, telefone ou e-mail" value="${esc(q)}" style="max-width:380px"></div>
+      <section class="card">${d.clientes.map(c => `<div class="linha clic" data-go="cliente/${c.id}"><div>${esc(c.nome)}<small>${esc(c.telefone || c.email || '—')}</small></div><span class="chip">Abrir</span></div>`).join('') || vazio('Nenhum cadastro encontrado.')}</section>`;
+    $('#busca').addEventListener('keydown', e => { if (e.key === 'Enter') { FILTRO.q = e.target.value.trim(); rota(); } });
+  },
+
+  async cliente(el, id) {
+    const d = await api('GET', '/api/n/clientes/' + id);
+    const c = CLI = d.cliente;
+    const dadosCampos = N.campos_cliente.map(k => [k.rotulo, c.dados[k.chave], k]).filter(x => x[1] !== undefined && x[1] !== '');
+    const fmt = (v, k) => k.tipo === 'dinheiro' ? reais(v) : k.tipo === 'data' ? dataBR(v) : k.tipo === 'booleano' ? (v ? 'Sim' : 'Não') : v;
+    el.innerHTML = `<div class="topo"><div><h1>${esc(c.nome)}</h1><p class="sub">${esc([c.telefone, c.email].filter(Boolean).join(' · ') || 'Sem contato cadastrado')}</p></div>
+        <div class="acoes"><button class="btn sec peq" data-act="cli-edit">Editar</button></div></div>
+      <div class="grid dois">
+        <section class="card"><h2>Dados</h2><dl>
+          ${[['Documento', c.documento], ['Endereço', c.endereco]].filter(x => x[1]).map(x => `<dt>${x[0]}</dt><dd>${esc(x[1])}</dd>`).join('')}
+          ${dadosCampos.map(x => `<dt>${esc(x[0])}</dt><dd>${esc(fmt(x[1], x[2]))}</dd>`).join('')}
+          ${c.observacoes ? `<dt>Observações</dt><dd>${esc(c.observacoes)}</dd>` : ''}</dl></section>
+        <section class="card"><h2>Novo registro</h2>
+          <div class="atalhos">${N.tipos_registro.map(t => `<button class="btn sec peq" data-act="reg-novo" data-tipo="${t.id}" data-cli="${c.id}">+ ${esc(t.rotulo)}</button>`).join('')}</div>
+          ${d.a_receber_cent ? `<div class="kpis"><div><small>A receber deste ${esc(R.cliente.toLowerCase())}</small><span class="num">${reais(d.a_receber_cent)}</span></div></div>` : ''}</section></div>
+      <section class="card"><h2>Histórico</h2>
+        ${d.registros.map(r => `<div class="linha clic" data-act="reg-abrir" data-id="${r.id}"><div>${esc(TIPOS[r.tipo]?.rotulo || r.tipo)} · ${esc(r.titulo)}<small>${dataBR(r.data_ref)}${r.valor_cent ? ' · ' + reais(r.valor_cent) : ''}</small></div>${chipSt(TIPOS[r.tipo], r.status)}</div>`).join('') || vazio('Nenhum registro ainda.')}</section>`;
+  },
+
+  async lista(el, tid) {
+    const t = TIPOS[tid];
+    if (!t) { el.innerHTML = vazio('Página não encontrada.'); return; }
+    const F = FILTRO[tid] = FILTRO[tid] || {st: 'abertos', modo: t.etapas.length > 2 ? 'quadro' : 'lista'};
+    const qs = new URLSearchParams({tipo: tid, ordem: t.data_ref ? 'asc' : 'desc'});
+    if (F.st === 'abertos' && F.modo !== 'quadro') qs.set('abertos', '1');
+    else if (F.st !== 'abertos' && F.st !== 'todos' && F.modo !== 'quadro') qs.set('status', F.st);
+    const d = await api('GET', '/api/n/registros?' + qs);
+    const linha = r => `<div class="linha clic" data-act="reg-abrir" data-id="${r.id}"><div>${esc(r.titulo)}<small>${esc(r.cliente_nome)} · ${dataBR(r.data_ref)}${r.valor_cent ? ' · ' + reais(r.valor_cent) : ''}</small></div>${chipSt(t, r.status)}</div>`;
+    const item = r => `<div class="item" data-act="reg-abrir" data-id="${r.id}">${esc(r.titulo)}<small>${esc(r.cliente_nome)} · ${dataBR(r.data_ref)}${r.valor_cent ? ' · ' + reais(r.valor_cent) : ''}</small></div>`;
+    const corpo = F.modo === 'quadro'
+      ? `<div class="quadro">${t.etapas.map(e => { const its = d.registros.filter(r => r.status === e); return `<div class="col"><h3><span>${esc(e)}</span><span class="chip ${t.etapas_finais.includes(e) ? 'ok' : ''}">${its.length}</span></h3>${its.map(item).join('') || vazio('Vazio')}</div>`; }).join('')}</div>`
+      : `<section class="card">${d.registros.map(linha).join('') || vazio('Nada por aqui.')}</section>`;
+    el.innerHTML = `<div class="topo"><div><h1>${esc(t.rotulo_plural)}</h1></div><button class="btn" data-act="reg-novo" data-tipo="${tid}">Novo(a) ${esc(t.rotulo.toLowerCase())}</button></div>
+      <div class="filtros">
+        <div class="seg" role="group" aria-label="Visualização"><button data-act="modo" data-tipo="${tid}" data-v="quadro" class="${F.modo === 'quadro' ? 'on' : ''}">Quadro</button><button data-act="modo" data-tipo="${tid}" data-v="lista" class="${F.modo === 'lista' ? 'on' : ''}">Lista</button></div>
+        ${F.modo === 'lista' ? `<select id="f-st" style="max-width:220px"><option value="abertos" ${F.st === 'abertos' ? 'selected' : ''}>Em aberto</option>${t.etapas.map(e => `<option ${F.st === e ? 'selected' : ''}>${esc(e)}</option>`).join('')}<option value="todos" ${F.st === 'todos' ? 'selected' : ''}>Todos</option></select>` : ''}
+      </div>${corpo}`;
+    $('#f-st')?.addEventListener('change', e => { F.st = e.target.value; rota(); });
+  },
+
+  async agenda(el) {
+    const d = await api('GET', '/api/n/agenda?dias=' + AGENDA_DIAS);
+    const agora = new Date().toISOString().slice(0, 10);
+    const grupos = [['Atrasados', d.atividades.filter(a => a.atrasada && a.vence_em.slice(0, 10) < agora)],
+                    ['Hoje', d.atividades.filter(a => a.vence_em.slice(0, 10) === agora)],
+                    ['Próximos', d.atividades.filter(a => a.vence_em.slice(0, 10) > agora)]];
+    el.innerHTML = `<h1>Agenda</h1><p class="sub">Lembretes automáticos do seu painel e os que você criar.</p>
+      <section class="card"><h2>Novo lembrete</h2><div class="form">
+        <div class="full"><label for="a-tit">O que lembrar</label><input id="a-tit" maxlength="200"></div>
+        <div><label for="a-quando">Quando</label><input id="a-quando" type="date" value="${agora}"></div></div>
+        <p style="margin:14px 0 0"><button class="btn peq" data-act="ativ-nova">Adicionar</button></p></section>
+      ${grupos.map(([nome, its]) => its.length ? `<section class="card"><h2>${nome}</h2>${its.map(a => `<div class="linha"><div>${esc(a.titulo)}<small>${a.cliente_id ? `<a href="#cliente/${a.cliente_id}">${esc(a.cliente_nome)}</a> · ` : ''}${dataBR(a.vence_em)}</small></div><button class="btn peq sec" data-act="ativ-feita" data-id="${a.id}">Feito</button></div>`).join('')}</section>` : '').join('') || ''}
+      ${d.atividades.length ? '' : `<section class="card">${vazio('Nenhum lembrete nos próximos ' + AGENDA_DIAS + ' dias.')}</section>`}`;
+  },
+
+  async perfil(el) {
+    const me = (await api('GET', '/api/me')).usuario;
+    const us = EU.admin ? (await api('GET', '/api/admin/usuarios')).usuarios : [];
+    el.innerHTML = `<h1>${EU.admin ? 'Gestão' : 'Perfil'}</h1><p class="sub">${esc(me.nome)} · ${esc(me.email)}</p>
+      <div class="grid dois"><section class="card"><h2>Minha conta</h2>
+        <p><a class="btn sec peq" href="/conta/senha">Trocar senha</a></p>
+        ${TEM_IA ? `<label for="k-groq">Chave Groq (IA para mensagens)</label><input id="k-groq" type="password" autocomplete="off" placeholder="${esc(me.groq || 'cole sua chave')}">
+          <p class="aj" style="margin:6px 0 10px">Opcional. Se o administrador configurou uma chave para todos, não precisa.</p>
+          <button class="btn peq" data-act="chaves">Salvar chave</button>` : ''}
+        <form method="post" action="/sair" style="margin-top:16px"><input type="hidden" name="csrf" value="${esc(CSRF)}"><button class="btn sec peq">Sair</button></form></section>
+        ${EU.admin ? `<section class="card"><h2>Equipe</h2>
+          ${us.map(u => `<div class="linha"><div>${esc(u.nome)}<small>${esc(u.email)} · ${u.papel === 'admin' ? 'Administrador' : esc(R.atendente)}${u.status === 'bloqueado' ? ' · bloqueado' : ''}</small></div>
+            <div class="acoes"><button class="btn peq sec" data-act="u-reset" data-id="${u.id}">Nova senha</button>${u.id !== EU.id ? `<button class="btn peq sec ${u.status === 'ativo' ? 'perigo' : ''}" data-act="u-status" data-id="${u.id}" data-v="${u.status === 'ativo' ? 'bloqueado' : 'ativo'}">${u.status === 'ativo' ? 'Bloquear' : 'Ativar'}</button>` : ''}</div></div>`).join('')}
+          <div class="sec-d"><div class="form"><div><label for="u-nome">Nome</label><input id="u-nome" maxlength="80"></div><div><label for="u-mail">E-mail</label><input id="u-mail" type="email" maxlength="254"></div>
+            <div><label for="u-papel">Perfil</label><select id="u-papel"><option value="vendedor">${esc(R.atendente)}</option><option value="admin">Administrador</option></select></div></div>
+            <p style="margin:12px 0 0"><button class="btn peq" data-act="u-novo">Criar acesso</button></p><div id="u-msg"></div></div></section>` : ''}</div>`;
+  },
+};
+
+/* ---------- diálogos ---------- */
+function dlgCliente(c) {
+  CLI = c || null;
+  abrir(`<h2>${c ? 'Editar' : 'Novo'} ${esc(R.cliente.toLowerCase())}</h2>
+    <div class="form">
+      <div class="full"><label for="c-nome">Nome *</label><input id="c-nome" maxlength="160" value="${esc(c?.nome)}"></div>
+      <div><label for="c-tel">Telefone / WhatsApp</label><input id="c-tel" inputmode="tel" maxlength="40" value="${esc(c?.telefone)}"></div>
+      <div><label for="c-mail">E-mail</label><input id="c-mail" type="email" maxlength="254" value="${esc(c?.email)}"></div>
+      <div><label for="c-doc">CPF / documento</label><input id="c-doc" maxlength="20" value="${esc(c?.documento)}"></div>
+      <div><label for="c-end">Endereço</label><input id="c-end" maxlength="300" value="${esc(c?.endereco)}"></div>
+      ${camposHTML(N.campos_cliente, c?.dados, 'cd-')}
+      <div class="full"><label for="c-obs">Observações</label><textarea id="c-obs" rows="3" maxlength="4000">${esc(c?.observacoes)}</textarea></div></div>
+    <div class="rod"><button class="btn sec" data-act="fechar">Cancelar</button><button class="btn" data-act="cli-salvar">Salvar</button></div>`);
+}
+
+async function dlgRegistroNovo(tid, cliId) {
+  const t = TIPOS[tid];
+  let seletor = '';
+  if (!cliId) {
+    const cl = (await api('GET', '/api/n/clientes')).clientes;
+    if (!cl.length) { aviso('Cadastre um(a) ' + R.cliente.toLowerCase() + ' primeiro.'); return; }
+    seletor = `<div class="full"><label for="rg-cli">${esc(R.cliente)} *</label><select id="rg-cli">${cl.map(c => `<option value="${c.id}">${esc(c.nome)}</option>`).join('')}</select></div>`;
+  }
+  const padrao = Object.fromEntries(t.campos.filter(c => c.padrao != null).map(c => [c.chave, c.padrao]));
+  abrir(`<h2>Novo(a) ${esc(t.rotulo.toLowerCase())}</h2>
+    <div class="form">${seletor}<div class="full"><label for="rg-st">Etapa</label><select id="rg-st">${t.etapas.map(e => `<option>${esc(e)}</option>`).join('')}</select></div>
+    ${camposHTML(t.campos, padrao, 'rg-')}</div>
+    <div class="rod"><button class="btn sec" data-act="fechar">Cancelar</button><button class="btn" data-act="reg-criar" data-tipo="${tid}" data-cli="${cliId || ''}">Salvar</button></div>`);
+}
+
+async function dlgRegistro(id) {
+  const d = await api('GET', '/api/n/registros/' + id);
+  const r = REG = d.registro, t = TIPOS[r.tipo], c = d.cliente;
+  if (!t) { aviso('Este tipo de registro não existe mais no manifesto.'); return; }
+  const totalPg = d.pagamentos.reduce((s, p) => s + p.valor_cent, 0), recPg = d.pagamentos.reduce((s, p) => s + p.recebido_cent, 0);
+  abrir(`<h2>${esc(t.rotulo)} · ${esc(r.titulo)}</h2>
+    <p class="sub" style="margin-bottom:10px"><a href="#cliente/${c.id}" data-act="fechar">${esc(c.nome)}</a>${c.telefone ? ' · ' + esc(c.telefone) : ''}</p>
+    <div class="form"><div class="full"><label for="rg-st">Etapa</label><select id="rg-st">${t.etapas.map(e => `<option ${e === r.status ? 'selected' : ''}>${esc(e)}</option>`).join('')}</select></div>
+      ${camposHTML(t.campos, r.dados, 'rg-')}</div>
+    <div class="rod"><button class="btn sec perigo" data-act="reg-apagar" data-id="${r.id}">Apagar</button><button class="btn" data-act="reg-salvar">Salvar alterações</button></div>
+    ${t.pagamentos ? `<div class="sec-d"><h2>Pagamentos ${totalPg ? `<span class="chip" style="margin-left:6px">${reais(recPg)} de ${reais(totalPg)}</span>` : ''}</h2>
+      ${d.pagamentos.map(p => `<div class="linha"><div>${esc(p.descricao)}<small>vence ${dataBR(p.vence_em)} · ${reais(p.valor_cent)}${p.recebido_cent ? ' · recebido ' + reais(p.recebido_cent) : ''}</small></div>
+        <div class="acoes">${chipPg(p.status)}<button class="btn peq sec" data-act="pg-receber" data-id="${p.id}" data-total="${p.valor_cent}" data-rec="${p.recebido_cent}">Receber</button>${p.recebido_cent ? '' : `<button class="btn peq sec perigo" data-act="pg-del" data-id="${p.id}">×</button>`}</div></div>`).join('') || vazio('Nenhum pagamento lançado.')}
+      <div class="form" style="margin-top:8px"><div><label for="pg-d">Descrição</label><input id="pg-d" maxlength="120" placeholder="Entrada, parcela…"></div>
+        <div><label for="pg-v">Valor (R$)</label><input id="pg-v" inputmode="decimal" placeholder="0,00"></div>
+        <div><label for="pg-venc">Vencimento</label><input id="pg-venc" type="date"></div></div>
+      <p style="margin:10px 0 0"><button class="btn peq sec" data-act="pg-add">Lançar pagamento</button></p></div>` : ''}
+    ${MSGS.length || TEM_IA ? `<div class="sec-d"><h2>Mensagem para ${esc(c.nome.split(' ')[0])}</h2>
+      <div class="form"><div class="full"><label for="m-mod">Modelo</label><select id="m-mod">${MSGS.map(m => `<option value="${m}">${esc(m.replace(/_/g, ' '))}</option>`).join('')}${TEM_IA ? '<option value="">(livre, escrita pela IA)</option>' : ''}</select></div></div>
+      <div class="acoes" style="justify-content:flex-start;margin-top:10px">${MSGS.length ? '<button class="btn peq sec" data-act="msg-gerar">Preencher modelo</button>' : ''}${TEM_IA ? '<button class="btn peq sec" data-act="msg-ia">Escrever / reescrever com IA</button>' : ''}</div>
+      <textarea id="m-txt" rows="5" hidden style="margin-top:10px"></textarea>
+      <p id="m-wa" style="margin:8px 0 0" hidden><a class="btn peq" id="m-wa-a" target="_blank" rel="noopener">Abrir no WhatsApp</a></p></div>` : ''}
+    <div class="sec-d"><h2>Histórico</h2>
+      <div style="display:flex;gap:8px"><input id="n-txt" maxlength="2000" placeholder="Anotar algo…"><button class="btn peq sec" data-act="nota">Anotar</button></div>
+      ${d.historico.map(h => `<div class="linha"><div>${h.tipo === 'status' ? `Etapa: ${esc(h.de)} → <b>${esc(h.para)}</b>` : esc(h.texto)}<small>${dataBR(h.em)}${horaBR(h.em)}</small></div></div>`).join('')}</div>
+    <div class="rod"><button class="btn sec" data-act="fechar">Fechar</button></div>`);
+}
+
+/* ---------- ações (delegação de eventos) ---------- */
+const mostrarMsg = d => {
+  const t = $('#m-txt'); t.value = d.texto; t.hidden = false;
+  const w = $('#m-wa'); if (d.whatsapp) { $('#m-wa-a').href = d.whatsapp; w.hidden = false; } else w.hidden = true;
+};
+const reabrir = async () => { const id = REG.id; await dlgRegistro(id); rota(); };
+const ACOES = {
+  fechar: () => fechar(),
+  async modo(b) { FILTRO[b.dataset.tipo].modo = b.dataset.v; rota(); },
+  'cli-novo': () => dlgCliente(null),
+  'cli-edit': () => dlgCliente(CLI),
+  async 'cli-salvar'() {
+    try {
+      const corpo = {nome: $('#c-nome').value, telefone: $('#c-tel').value, email: $('#c-mail').value, documento: $('#c-doc').value,
+        endereco: $('#c-end').value, observacoes: $('#c-obs').value, dados: lerCampos(N.campos_cliente, 'cd-')};
+      const d = CLI ? await api('PUT', '/api/n/clientes/' + CLI.id, corpo) : await api('POST', '/api/n/clientes', corpo);
+      fechar(); aviso('Salvo.');
+      if (location.hash === '#cliente/' + d.cliente.id) rota(); else location.hash = '#cliente/' + d.cliente.id;
+    } catch (e) { erroDlg(e.message); }
+  },
+  'reg-novo': b => dlgRegistroNovo(b.dataset.tipo, b.dataset.cli ? Number(b.dataset.cli) : null),
+  async 'reg-criar'(b) {
+    const t = TIPOS[b.dataset.tipo];
+    try {
+      const cli = b.dataset.cli ? Number(b.dataset.cli) : Number($('#rg-cli').value);
+      const d = await api('POST', '/api/n/registros', {tipo: t.id, cliente_id: cli, status: $('#rg-st').value, dados: lerCampos(t.campos, 'rg-')});
+      fechar(); aviso('Salvo.'); rota(); if (!location.hash.startsWith('#t-') && !location.hash.startsWith('#cliente')) location.hash = '#t-' + t.id;
+    } catch (e) { erroDlg(e.message); }
+  },
+  'reg-abrir': b => dlgRegistro(Number(b.dataset.id)),
+  async 'reg-salvar'() {
+    const t = TIPOS[REG.tipo];
+    try {
+      await api('PUT', '/api/n/registros/' + REG.id, {versao: REG.versao, status: $('#rg-st').value, dados: lerCampos(t.campos, 'rg-')});
+      aviso('Salvo.'); await reabrir();
+    } catch (e) { erroDlg(e.message); }
+  },
+  async 'reg-apagar'(b) {
+    if (!confirm('Apagar este registro? Não dá para desfazer.')) return;
+    await api('DELETE', '/api/n/registros/' + b.dataset.id); fechar(); aviso('Apagado.'); rota();
+  },
+  async nota() { const v = $('#n-txt').value.trim(); if (!v) return; await api('POST', `/api/n/registros/${REG.id}/nota`, {texto: v}); await reabrir(); },
+  async 'pg-add'() {
+    try { await api('POST', `/api/n/registros/${REG.id}/pagamentos`, {descricao: $('#pg-d').value, valor_cent: cent($('#pg-v').value), vence_em: $('#pg-venc').value || null}); await reabrir(); }
+    catch (e) { erroDlg(e.message); }
+  },
+  async 'pg-receber'(b) {
+    const total = Number(b.dataset.total), r = prompt('Total recebido deste pagamento (R$). Previsto: ' + reais(total), emReais(Number(b.dataset.rec) || total));
+    if (r === null) return;
+    try { await api('POST', `/api/n/pagamentos/${b.dataset.id}/receber`, {total_recebido_cent: cent(r)}); await reabrir(); } catch (e) { aviso(e.message); }
+  },
+  async 'pg-del'(b) { await api('DELETE', '/api/n/pagamentos/' + b.dataset.id); await reabrir(); },
+  async 'msg-gerar'() { mostrarMsg(await api('POST', '/api/n/mensagem', {modelo: $('#m-mod').value, cliente_id: REG.cliente_id, registro_id: REG.id})); },
+  async 'msg-ia'(b) {
+    b.disabled = true;
+    try { mostrarMsg(await api('POST', '/api/n/ia/mensagem', {modelo: $('#m-mod').value || null, cliente_id: REG.cliente_id, registro_id: REG.id})); }
+    finally { b.disabled = false; }
+  },
+  async 'ativ-nova'() {
+    const titulo = $('#a-tit').value.trim(); if (!titulo) { aviso('Diga o que lembrar.'); return; }
+    await api('POST', '/api/n/atividades', {titulo, vence_em: $('#a-quando').value}); aviso('Lembrete criado.'); rota();
+  },
+  async 'ativ-feita'(b) { await api('POST', `/api/n/atividades/${b.dataset.id}/feita`, {feita: true}); rota(); },
+  async chaves() { const v = $('#k-groq').value.trim(); if (!v) return; await api('PUT', '/api/me/chaves', {groq: v}); aviso('Chave salva.'); rota(); },
+  async 'u-novo'() {
+    try {
+      const d = await api('POST', '/api/admin/usuarios', {nome: $('#u-nome').value, email: $('#u-mail').value, papel: $('#u-papel').value});
+      $('#u-msg').innerHTML = `<div class="aviso">Acesso criado. Senha provisória (aparece só agora): <b>${esc(d.senha_temporaria)}</b></div>`;
+    } catch (e) { aviso(e.message); }
+  },
+  async 'u-reset'(b) { const d = await api('PUT', '/api/admin/usuarios/' + b.dataset.id, {resetar_senha: true}); prompt('Senha provisória (copie agora):', d.senha_temporaria); },
+  async 'u-status'(b) { await api('PUT', '/api/admin/usuarios/' + b.dataset.id, {status: b.dataset.v}); rota(); },
+};
+document.addEventListener('click', async e => {
+  const go = e.target.closest('[data-go]');
+  if (go && !e.target.closest('[data-act]')) { location.hash = '#' + go.dataset.go; return; }
+  const b = e.target.closest('[data-act]');
+  if (!b || !ACOES[b.dataset.act]) return;
+  if (b.tagName === 'A' && b.dataset.act === 'fechar') { fechar(); return; }
+  try { await ACOES[b.dataset.act](b); } catch (err) { aviso(err.message); }
+});
+
+/* ---------- roteador ---------- */
+async function rota() {
+  const [pg, arg] = (location.hash.slice(1) || 'inicio').split('/');
+  const chave = pg === 'cliente' ? 'clientes' : pg;
+  $('#menu').innerHTML = PAGINAS.map(([k, n]) => `<a href="#${k}" class="${k === chave ? 'on' : ''}">${esc(n)}</a>`).join('');
+  $('#menu').classList.remove('aberto'); $('#burger').setAttribute('aria-expanded', 'false');
+  const el = $('#view');
+  try {
+    if (pg.startsWith('t-')) await VIEWS.lista(el, pg.slice(2));
+    else await (VIEWS[pg] || VIEWS.inicio)(el, arg);
+  } catch (e) { el.innerHTML = `<div class="aviso er" role="alert">${esc(e.message)}</div>`; }
+}
+$('#burger').addEventListener('click', () => { const a = $('#menu').classList.toggle('aberto'); $('#burger').setAttribute('aria-expanded', a); });
+addEventListener('hashchange', rota);
+rota();
+</script>
+</body>
+</html>
