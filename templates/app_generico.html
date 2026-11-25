@@ -114,7 +114,7 @@ const TIPOS = Object.fromEntries(N.tipos_registro.map(t => [t.id, t]));
 const TEM_IA = N.modulos.includes('ia');
 const MSGS = Object.keys(N.mensagens);
 const R = N.rotulos;
-const PAGINAS = [['inicio', 'Início'], ['clientes', R.clientes]]
+const PAGINAS = [['inicio', 'Início'], ['clientes', R.clientes], ['produtos', 'Produtos']]
   .concat(N.tipos_registro.map(t => ['t-' + t.id, t.rotulo_plural]))
   .concat([['agenda', 'Agenda'], ['perfil', EU.admin ? 'Gestão' : 'Perfil']]);
 
@@ -265,6 +265,18 @@ const VIEWS = {
     $('#f-st')?.addEventListener('change', e => { F.st = e.target.value; rota(); });
   },
 
+  async produtos(el) {
+    const q = FILTRO.produtos || '';
+    const d = await api('GET', '/api/n/produtos' + (q ? '?q=' + encodeURIComponent(q) : ''));
+    el.innerHTML = `<div class="topo"><div><h1>Produtos</h1><p class="sub">Cadastre seus produtos e acompanhe custos, preço de venda e lucro.</p></div>
+        <button class="btn" data-act="produto-novo">+ Novo produto</button></div>
+      <div class="filtros"><input id="busca-prod" type="search" placeholder="Buscar produto..." value="${esc(q)}" style="max-width:380px"></div>
+      <section class="card">${d.produtos.map(p => `<div class="linha clic" data-act="produto-abrir" data-id="${p.id}">
+        <div>${esc(p.nome)}<small>${p.unidade_venda === 'cento' ? 'Venda por cento' : 'Venda por unidade'} · Custo ${reais(p.custo_unit_cent)} por unidade · Venda ${reais(p.preco_unit_cent)} por unidade</small></div>
+        <div style="text-align:right"><b>${reais(p.preco_venda_cent)}</b><small>Lucro ${reais(p.lucro_cent)}</small></div></div>`).join('') || vazio('Nenhum produto cadastrado ainda.')}</section>`;
+    $('#busca-prod').addEventListener('keydown', e => { if (e.key === 'Enter') { FILTRO.produtos = e.target.value.trim(); rota(); } });
+  },
+
   async agenda(el) {
     const d = await api('GET', '/api/n/agenda?dias=' + AGENDA_DIAS);
     const agora = new Date().toISOString().slice(0, 10);
@@ -329,6 +341,49 @@ async function dlgRegistroNovo(tid, cliId) {
     <div class="rod"><button class="btn sec" data-act="fechar">Cancelar</button><button class="btn" data-act="reg-criar" data-tipo="${tid}" data-cli="${cliId || ''}">Salvar</button></div>`);
 }
 
+function produtoCampos(p = {}) {
+  const cento = p.unidade_venda === 'cento';
+  return `<h2>${p.id ? 'Editar produto' : 'Novo produto'}</h2>
+    <div class="form">
+      <div class="full"><label for="pr-nome">Nome do produto *</label><input id="pr-nome" maxlength="160" value="${esc(p.nome || '')}" placeholder="Ex.: Brownie tradicional"></div>
+      <div><label for="pr-unidade">Como você vende?</label><select id="pr-unidade"><option value="unidade" ${!cento ? 'selected' : ''}>Por unidade</option><option value="cento" ${cento ? 'selected' : ''}>Por cento (100 unidades)</option></select></div>
+      <div><label for="pr-lucro">Lucro desejado (%)</label><input id="pr-lucro" type="number" min="0" max="10000" step="1" value="${p.lucro_pct ?? 100}"><small class="aj">Sugestão inicial: 100% sobre o custo.</small></div>
+      <div class="grp">Custos (opcional)</div>
+      <div><label for="pr-fixo">Custo fixo (R$)</label><input id="pr-fixo" inputmode="decimal" placeholder="0,00" value="${emReais(p.custo_fixo_cent || 0)}"><small class="aj">Ex.: embalagem, gás ou rateio.</small></div>
+      <div><label for="pr-variavel">Custo variável (R$)</label><input id="pr-variavel" inputmode="decimal" placeholder="0,00" value="${emReais(p.custo_variavel_cent || 0)}"><small class="aj">Ex.: ingredientes ou matéria-prima.</small></div>
+      <div class="full aviso" id="pr-resumo">Informe os custos para calcular o preço sugerido.</div>
+      <div class="grp">Preço de venda</div>
+      <div class="full"><label for="pr-preco">Valor de venda (${cento ? 'por cento' : 'por unidade'}) (R$)</label><input id="pr-preco" inputmode="decimal" placeholder="0,00" value="${emReais(p.preco_venda_cent || 0)}"></div>
+      <div class="full"><label for="pr-obs">Observações (opcional)</label><textarea id="pr-obs" rows="2" maxlength="500">${esc(p.observacoes || '')}</textarea></div>
+    </div>
+    <div class="rod">${p.id ? `<button class="btn sec perigo" data-act="produto-apagar" data-id="${p.id}">Excluir</button>` : ''}
+      <button class="btn sec" data-act="fechar">Cancelar</button><button class="btn" data-act="produto-salvar" ${p.id ? `data-id="${p.id}"` : ''}>Salvar produto</button></div>`;
+}
+
+function lerValorCent(id) { return cent($(id).value || '0'); }
+function atualizarProdutoResumo() {
+  const q = $('#pr-unidade').value === 'cento' ? 100 : 1;
+  const fixo = lerValorCent('#pr-fixo'), variavel = lerValorCent('#pr-variavel');
+  const custo = fixo + variavel, pct = Math.max(0, Number($('#pr-lucro').value) || 0);
+  const sugerido = Math.round(custo * (1 + pct / 100));
+  const preco = lerValorCent('#pr-preco');
+  $('#pr-resumo').innerHTML = `<b>Custo total:</b> ${reais(custo)} · <b>Custo por unidade:</b> ${reais(Math.round(custo / q))}<br>
+    <b>Preço sugerido (${pct}% de lucro):</b> ${reais(sugerido)}${q === 100 ? ` · ${reais(Math.round(sugerido / 100))} por unidade` : ''}<br>
+    <b>Venda por unidade:</b> ${reais(Math.round(preco / q))}<br>
+    <b>Lucro no preço informado:</b> ${reais(preco - custo)}${q === 100 ? ` · ${reais(Math.round((preco - custo) / 100))} por unidade` : ''}`;
+}
+function abrirProduto(p = {}) {
+  abrir(produtoCampos(p));
+  ['#pr-unidade','#pr-fixo','#pr-variavel','#pr-lucro','#pr-preco'].forEach(sel => $(sel).addEventListener('input', atualizarProdutoResumo));
+  atualizarProdutoResumo();
+}
+async function dlgProduto(id) {
+  const d = await api('GET', '/api/n/produtos');
+  const p = d.produtos.find(x => x.id === id);
+  if (!p) { aviso('Produto não encontrado.'); return; }
+  abrirProduto(p);
+}
+
 async function dlgRegistro(id) {
   const d = await api('GET', '/api/n/registros/' + id);
   const r = REG = d.registro, t = TIPOS[r.tipo], c = d.cliente;
@@ -366,6 +421,25 @@ const reabrir = async () => { const id = REG.id; await dlgRegistro(id); rota(); 
 const ACOES = {
   fechar: () => fechar(),
   async modo(b) { FILTRO[b.dataset.tipo].modo = b.dataset.v; rota(); },
+  'produto-novo': () => abrirProduto(),
+  'produto-abrir': b => dlgProduto(Number(b.dataset.id)),
+  async 'produto-salvar'(b) {
+    try {
+      const corpo = {nome: $('#pr-nome').value, unidade_venda: $('#pr-unidade').value,
+        custo_fixo_cent: lerValorCent('#pr-fixo'), custo_variavel_cent: lerValorCent('#pr-variavel'),
+        preco_venda_cent: lerValorCent('#pr-preco'), lucro_pct: Number($('#pr-lucro').value || 0),
+        observacoes: $('#pr-obs').value};
+      if (!corpo.nome.trim()) throw new Error('Informe o nome do produto.');
+      if (b.dataset.id) await api('PUT', '/api/n/produtos/' + b.dataset.id, corpo);
+      else await api('POST', '/api/n/produtos', corpo);
+      fechar(); aviso('Produto salvo.'); rota();
+    } catch (e) { erroDlg(e.message); }
+  },
+  async 'produto-apagar'(b) {
+    if (!confirm('Excluir este produto?')) return;
+    await api('DELETE', '/api/n/produtos/' + b.dataset.id);
+    fechar(); aviso('Produto excluído.'); rota();
+  },
   'cli-novo': () => dlgCliente(null),
   'cli-edit': () => dlgCliente(CLI),
   async 'cli-salvar'() {
